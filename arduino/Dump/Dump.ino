@@ -1,0 +1,247 @@
+#define DATA 3
+#define CLOCK 2
+#define CYCLE 20
+
+
+struct {
+  byte infobyte;
+  byte type;
+  byte devs;
+  byte size;
+  int  blocks;
+} ssdinfo;
+
+void dump(int _blocks) {
+  SetMode4(0);
+  for (int _block = 0; _block < _blocks; _block++) {
+    SetAddress4(((long)_block << 8));
+    _Control(0b11010000);
+    for (int b = 0; b < 256; b++) {
+      Serial.write(_DataI());
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(57600);
+  pinMode(CLOCK, OUTPUT);
+  pinMode(DATA, INPUT);
+  digitalWrite(CLOCK, LOW);
+  
+  Reset();
+  SelectASIC4();
+
+  GetSSDInfo();
+}
+
+void loop() {
+  while (Serial.available() > 0) {
+   char incomingCharacter = Serial.read();
+   switch (incomingCharacter) {
+     case 'b':
+     case 'B':
+      Serial.write(ssdinfo.infobyte);
+      break;
+ 
+     case 'd':
+     case 'D':
+      dump(ssdinfo.blocks);
+      break;
+
+     case 'i':
+     case 'I':
+      printinfo();
+      break;
+    }
+ }
+}
+
+void printinfo() {
+  long unsigned int blocks;
+  Serial.print("TYPE: ");
+  switch (ssdinfo.type) {
+    case 0:
+      Serial.println("RAM");
+      break;
+    case 1:
+      Serial.println("Type 1 Flash");
+      break;
+    case 2:
+      Serial.println("Type 2 Flash");
+      break;
+    case 3:
+      Serial.println("TBS");
+      break;
+    case 4:
+      Serial.println("TBS");
+      break;
+    case 5:
+      Serial.println("???");
+      break;
+    case 6:
+      Serial.println("ROM");
+      break;
+    case 7:
+      Serial.println("???");
+      break;
+  }
+  
+  Serial.print("DEVICES: ");
+  Serial.println(ssdinfo.devs);
+  
+  Serial.print("SIZE: ");
+  switch (ssdinfo.size) {
+    case 0:
+      Serial.println("0");
+      break;
+    case 1:
+      Serial.println("32KB");
+      break;
+    case 2:
+      Serial.println("64KB");
+      break;
+    case 3:
+      Serial.println("128KB");
+      break;
+    case 4:
+      Serial.println("256KB");
+      break;
+    case 5:
+      Serial.println("512KB");
+      break;
+    case 6:
+      Serial.println("1MB");
+      break;
+    case 7:
+      Serial.println("2MB");
+      break;
+  }
+
+  Serial.print("BLOCKS: ");
+  Serial.println(ssdinfo.blocks);
+}
+
+void DeselectASIC() {
+  _Control(0b01000000);
+}
+
+byte ReadByte(unsigned long address) {
+  SetAddress4(address);
+  _Control(0b11000000);
+  return _DataI();
+}
+
+void ReadBytes(byte* buffer, unsigned long address, int count) {
+  _Control(0b11010000);
+  for (int _cx = 0; _cx < count; _cx++)
+    buffer[_cx] = _DataI();
+}
+
+void Reset() {
+  _Control(0b00000000);
+}
+
+void SelectASIC4() {
+  _Control(0b01000010);
+}
+
+void SetAddress4(unsigned long address) {
+  byte a0 = address & 0xFF;
+  byte a1 = (address >> 8) & 0xFF; 
+  byte a2 = (address >> 16) & 0xFF;
+
+  // ports D + C????
+  _Control(0b10010011); 
+  _DataO(a1);
+  _DataO(a2);
+  
+  // send port b address
+  _Control(0b10000001);
+  _DataO(a0);
+}
+
+void SetMode4(byte mode) {
+  // changed from 0b10100010
+  _Control(0b10000010);
+  _DataO(mode & 0x0F);
+}
+
+void _Control(byte data) {
+  pinMode(DATA, OUTPUT);
+  digitalWrite(DATA, HIGH);
+  _Cycle(1);
+  digitalWrite(DATA, LOW);
+  _Cycle(2);
+  
+  for (byte _dx = 0; _dx < 8; _dx++) {
+    digitalWrite(DATA, ((data & (0b00000001 << _dx)) == 0) ? LOW : HIGH);
+    _Cycle(1);
+  }
+  
+  digitalWrite(DATA, LOW);
+  _Cycle(1);
+  
+  pinMode(DATA, INPUT);
+}
+
+void _Cycle(byte cycles) {
+  for (byte _cx = 0; _cx < cycles; _cx++) {
+    delayMicroseconds(CYCLE / 5);
+    digitalWrite(CLOCK, HIGH);
+    delayMicroseconds(CYCLE);
+    digitalWrite(CLOCK, LOW);
+    delayMicroseconds(CYCLE - (CYCLE / 5));
+  }
+}
+
+byte _DataI() {
+  pinMode(DATA, OUTPUT);
+  digitalWrite(DATA, HIGH);
+  _Cycle(2);
+  pinMode(DATA, INPUT);
+  _Cycle(1);
+  
+  byte input = 0;
+  for (byte _dx = 0; _dx < 8; _dx++) {
+    digitalWrite(CLOCK, HIGH);
+    delayMicroseconds(CYCLE / 5);
+    input = input | (digitalRead(DATA) << _dx);
+    delayMicroseconds(CYCLE - (CYCLE /5));
+    digitalWrite(CLOCK, LOW);
+    delayMicroseconds(CYCLE);
+  }
+  _Cycle(1);
+  return input;
+}
+
+void GetSSDInfo() {
+  ssdinfo.infobyte = _DataI();
+
+  ssdinfo.type   = (ssdinfo.infobyte & 0b11100000) >> 5;
+  ssdinfo.devs   = ((ssdinfo.infobyte & 0b00011000) >> 3) + 1;
+  ssdinfo.size   = (ssdinfo.infobyte & 0b00000111);
+  ssdinfo.blocks = (ssdinfo.size == 0) ? 0 : ((0b10000 << ssdinfo.size) * 4);
+}
+
+void _DataO(byte data) { 
+  pinMode(DATA, OUTPUT);
+  digitalWrite(DATA, HIGH);
+  _Cycle(2);
+  digitalWrite(DATA, LOW);
+  _Cycle(1);
+  
+  for (byte _dx = 0; _dx < 8; _dx++) {
+    digitalWrite(DATA, ((data & (0b00000001 << _dx)) == 0) ? LOW : HIGH);
+    _Cycle(1);
+  }
+  
+  digitalWrite(DATA, LOW);
+  _Cycle(1);
+  
+  pinMode(DATA, INPUT);
+}
+
+void _Null() {
+  pinMode(DATA, INPUT);
+  _Cycle(12);
+}
