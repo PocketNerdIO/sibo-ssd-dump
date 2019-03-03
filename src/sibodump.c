@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <termios.h>
+#include <errno.h>
 #include <fcntl.h>
 // #include <time.h>
 // #include <utime.h>
@@ -73,67 +74,76 @@ bool fsitemexists(const char *filename){
 }
 #endif
 
-int set_istrip (int desc, int value) {
-    struct termios settings;
-    int result;
+int set_interface_attribs(int fd, int speed) {
+    struct termios tty;
 
-    result = tcgetattr(desc, &settings);
-    if (result < 0) {
-        perror("error in tcgetattr");
-        return 0;
-    }   
-
-    settings.c_iflag &= ~ISTRIP;
-    if (value) settings.c_iflag |= ISTRIP;
-
-    result = tcsetattr(desc, TCSANOW, &settings);
-    if (result < 0) {
-        perror("error in tcgetattr");
-        return 0;
+    if (tcgetattr(fd, &tty) < 0) {
+        printf("Error from tcgetattr: %s\n", strerror(errno));
+        return -1;
     }
 
-    return 1;
+    cfsetospeed(&tty, (speed_t)speed);
+    cfsetispeed(&tty, (speed_t)speed);
+
+    tty.c_cflag |= (CLOCAL | CREAD);    /* ignore modem controls */
+    tty.c_cflag &= ~CSIZE;
+    tty.c_cflag |= CS8;         /* 8-bit characters */
+    tty.c_cflag &= ~PARENB;     /* no parity bit */
+    tty.c_cflag &= ~CSTOPB;     /* only need 1 stop bit */
+    tty.c_cflag &= ~CRTSCTS;    /* no hardware flowcontrol */
+
+    tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+    tty.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+    tty.c_oflag &= ~OPOST;
+
+    tty.c_cc[VMIN] = 1;
+    tty.c_cc[VTIME] = 1;
+
+    if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+        printf("Error from tcsetattr: %s\n", strerror(errno));
+        return -1;
+    }
+    return 0;
 }
 
 void GetSSDInfo(char input) {
-  ssdinfo.infobyte = input;
+    ssdinfo.infobyte = input;
 
-  ssdinfo.type   = (ssdinfo.infobyte & 0b11100000) >> 5;
-  ssdinfo.devs   = ((ssdinfo.infobyte & 0b00011000) >> 3) + 1;
-  ssdinfo.size   = (ssdinfo.infobyte & 0b00000111);
-  ssdinfo.blocks = (ssdinfo.size == 0) ? 0 : ((0b10000 << ssdinfo.size) * 4);
-
+    ssdinfo.type   = (ssdinfo.infobyte & 0b11100000) >> 5;
+    ssdinfo.devs   = ((ssdinfo.infobyte & 0b00011000) >> 3) + 1;
+    ssdinfo.size   = (ssdinfo.infobyte & 0b00000111);
+    ssdinfo.blocks = (ssdinfo.size == 0) ? 0 : ((0b10000 << ssdinfo.size) * 4);
 }
 
 void printinfo() {
-  long unsigned int blocks;
-  printf("TYPE: ");
-  switch (ssdinfo.type) {
-    case 0:
-      printf("RAM");
-      break;
-    case 1:
-      printf("Type 1 Flash");
-      break;
-    case 2:
-      printf("Type 2 Flash");
-      break;
-    case 3:
-      printf("TBS");
-      break;
-    case 4:
-      printf("TBS");
-      break;
-    case 5:
-      printf("???");
-      break;
-    case 6:
-      printf("ROM");
-      break;
-    case 7:
-      printf("???");
-      break;
-  }
+    long unsigned int blocks;
+    printf("TYPE: ");
+    switch (ssdinfo.type) {
+        case 0:
+            printf("RAM");
+            break;
+        case 1:
+            printf("Type 1 Flash");
+            break;
+        case 2:
+            printf("Type 2 Flash");
+            break;
+        case 3:
+            printf("TBS");
+            break;
+        case 4:
+            printf("TBS");
+            break;
+        case 5:
+            printf("???");
+            break;
+        case 6:
+            printf("ROM");
+            break;
+        case 7:
+            printf("???");
+            break;
+    }
     printf("\n");
 
     printf("DEVICES: %d\n", ssdinfo.devs);
@@ -179,7 +189,6 @@ void dump(int fd, const char *path) {
 
     fp = fopen(path, "wb");
 
-    // GO!
     write(fd, "d", 1);
     for (i = 1; i <= ssdinfo.blocks * ssdinfo.devs * 256; i++) {
         read(fd, &buffer, 1);
@@ -190,14 +199,30 @@ void dump(int fd, const char *path) {
     return;
 }
 
+void getblock(int fd, unsigned int blocknum, char *block) {
+    unsigned int i;
+
+    printf("Fetch block %d/%d\r", blocknum, ssdinfo.blocks);
+    fflush(stdout);
+    write(fd, "f", 1);
+    for (i = 0; i <= 255; i++) {
+        read(fd, &block[i], 1);
+        // printf(".");
+    }
+}
+
+
 int main (int argc, const char **argv) {
-    struct termios tty;
     int fd;
-    char i;
+    int i;
     bool only_list, ignore_attributes, ignore_modtime;
     const char *serialdev = NULL, *dumppath = NULL;
     int result;
     unsigned char input;
+    unsigned int curblock = 0;
+    char block[256];
+    FILE *fp;
+    int wlen;
 
     struct argparse_option options[] = {
         OPT_HELP(),
@@ -211,18 +236,38 @@ int main (int argc, const char **argv) {
     argc = argparse_parse(&argparse, argc, argv);
 
     fd = open(serialdev, O_RDWR | O_NOCTTY);
-    if (fd <0) {perror(serialdev); exit(-1); }
+    if (fd < 0) {
+        perror(serialdev);
+        exit(-1);
+    }
 
-    write(fd, "b", 1);
-    printf("Waiting...\n");
+    set_interface_attribs(fd, B57600);
+    usleep(2000000);
+    tcflush(fd, TCIFLUSH);
+
+    wlen = write(fd, "b", 1);
+    if (wlen != 1) {
+        printf("Error from write: %d, %d\n", wlen, errno);
+    }
+
     read(fd, &input, 1);
     GetSSDInfo(input);
-
     printinfo();
 
     if (dumppath != NULL) {
-        dump(fd, dumppath);
+        printf("\n");
+        write(fd, "r", 1);
+        fp = fopen(dumppath, "wb");
+
+        for (i = 0; i < ssdinfo.blocks; i++) {
+            getblock(fd, curblock, block);
+            write(fd, "n", 1);
+            curblock++;
+            fwrite(&block, sizeof(block), 1, fp);
+        }
+        fclose(fp);
     }
 
     close(fd);
+    printf("\n");
 }
