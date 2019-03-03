@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdbool.h>
 #include <ctype.h>
-#include <termios.h>
 #include <errno.h>
 #include <fcntl.h>
 // #include <time.h>
@@ -18,6 +17,7 @@
     // Assume it's something POSIX-compliant
     #include <unistd.h>
     #include <sys/stat.h>
+    #include <termios.h>
     const char *slash = "/";
 #endif
 
@@ -37,47 +37,103 @@ struct {
 } ssdinfo;
 
 #ifdef _WIN32
-BOOL fileexists(LPCTSTR szPath)
-{
+void usleep(int us) {
+    Sleep(us);
+}
+#endif
+
+#ifdef _WIN32
+BOOL fileexists(LPCTSTR szPath) {
   DWORD dwAttrib = GetFileAttributes(szPath);
 
   return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
-BOOL direxists(LPCTSTR szPath)
-{
+
+BOOL direxists(LPCTSTR szPath) {
   DWORD dwAttrib = GetFileAttributes(szPath);
 
   return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
-BOOL fsitemexists(LPCTSTR szPath)
-{
+
+BOOL fsitemexists(LPCTSTR szPath) {
   DWORD dwAttrib = GetFileAttributes(szPath);
 
   return (dwAttrib != INVALID_FILE_ATTRIBUTES);
 }
 
 #else
-bool fileexists(const char *filename){
+bool fileexists(const char *filename) {
     struct stat path_stat;
 
     return (stat(filename, &path_stat) == 0 && S_ISREG(path_stat.st_mode));
 }
-bool direxists(const char *filename){
+bool direxists(const char *filename) {
     struct stat path_stat;
 
     return (stat(filename, &path_stat) == 0 && S_ISDIR(path_stat.st_mode));
 }
-bool fsitemexists(const char *filename){
+bool fsitemexists(const char *filename) {
     struct stat path_stat;
 
     return (stat(filename, &path_stat) == 0);
 }
 #endif
 
-int set_interface_attribs(int fd, int speed) {
+//
+// Serial Port Configuration
+//
+#ifdef _WIN32
+
+#define B9600   CBR_9600
+#define B57600  CBR_57600
+
+int set_interface_attribs(HANDLE *fd, int speed) {
+    BOOL Status;
+    DCB dcbSerialParams = { 0 };
+    COMMTIMEOUTS timeouts = { 0 };
+
+    dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
+    Status = GetCommState(*fd, &dcbSerialParams);
+    dcbSerialParams.BaudRate = speed;
+    dcbSerialParams.ByteSize = 0;
+    dcbSerialParams.StopBits = ONESTOPBIT;
+    dcbSerialParams.Parity   = NOPARITY;
+
+    timeouts.ReadIntervalTimeout         = 50; // in milliseconds
+    timeouts.ReadTotalTimeoutConstant    = 50; // in milliseconds
+    timeouts.ReadTotalTimeoutMultiplier  = 10; // in milliseconds
+    timeouts.WriteTotalTimeoutConstant   = 50; // in milliseconds
+    timeouts.WriteTotalTimeoutMultiplier = 10; // in milliseconds
+
+    Status = SetCommState(*fd, &dcbSerialParams);
+    Status = SetCommTimeouts(*fd, &timeouts);
+    return 0;
+}
+
+HANDLE portopen(const char *serialdev) {
+    return CreateFile(serialdev, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+}
+
+int portsend(HANDLE *fd, char cmd) {
+    return WriteFile(*fd, &cmd, 1, NULL, NULL);
+}
+
+int portread(HANDLE *fd, unsigned char *buffer) {
+    return ReadFile(*fd, &buffer, 1, NULL, NULL);
+}
+
+int portflush(HANDLE *fd) {
+    return PurgeComm(*fd, PURGE_RXCLEAR | PURGE_TXCLEAR);
+}
+
+int portclose(HANDLE *fd) {
+    return CloseHandle(*fd);
+}
+#else
+int set_interface_attribs(int *fd, int speed) {
     struct termios tty;
 
-    if (tcgetattr(fd, &tty) < 0) {
+    if (tcgetattr(*fd, &tty) < 0) {
         printf("Error from tcgetattr: %s\n", strerror(errno));
         return -1;
     }
@@ -99,12 +155,33 @@ int set_interface_attribs(int fd, int speed) {
     tty.c_cc[VMIN] = 1;
     tty.c_cc[VTIME] = 1;
 
-    if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+    if (tcsetattr(*fd, TCSANOW, &tty) != 0) {
         printf("Error from tcsetattr: %s\n", strerror(errno));
         return -1;
     }
     return 0;
 }
+
+int portopen(const char *serialdev) {
+    return open(serialdev, O_RDWR | O_NOCTTY);
+}
+
+int portsend(int fd, char cmd) {
+    return write(fd, &cmd, 1);
+}
+
+int portread(int *fd, unsigned char *buffer) {
+    return read(*fd, buffer, 1);
+}
+
+int portflush(int fd) {
+    return tcflush(fd, TCIFLUSH);
+}
+
+int portclose(int fd) {
+    return close(fd);
+}
+#endif
 
 void GetSSDInfo(char input) {
     ssdinfo.infobyte = input;
@@ -189,9 +266,9 @@ void dump(int fd, const char *path) {
 
     fp = fopen(path, "wb");
 
-    write(fd, "d", 1);
+    portsend(fd, 'd');
     for (i = 1; i <= ssdinfo.blocks * ssdinfo.devs * 256; i++) {
-        read(fd, &buffer, 1);
+        portread(&fd, &buffer);
         fwrite(&buffer, sizeof(buffer), 1, fp);
     }
 
@@ -199,28 +276,33 @@ void dump(int fd, const char *path) {
     return;
 }
 
-void getblock(int fd, unsigned int blocknum, char *block) {
+void getblock(int fd, unsigned int blocknum, unsigned char *block) {
     unsigned int i;
 
     printf("Fetch block %d/%d\r", blocknum, ssdinfo.blocks);
     fflush(stdout);
-    write(fd, "f", 1);
+    portsend(fd, 'f');
     for (i = 0; i <= 255; i++) {
-        read(fd, &block[i], 1);
+        portread(&fd, &block[i]);
         // printf(".");
     }
 }
 
 
 int main (int argc, const char **argv) {
+#ifdef _WIN32
+    HANDLE fd;
+#else
     int fd;
+#endif
+
     int i;
     bool only_list, ignore_attributes, ignore_modtime;
     const char *serialdev = NULL, *dumppath = NULL;
     int result;
     unsigned char input;
     unsigned int curblock = 0;
-    char block[256];
+    unsigned char block[256];
     FILE *fp;
     int wlen;
 
@@ -235,39 +317,48 @@ int main (int argc, const char **argv) {
     argparse_describe(&argparse, "\nDumps SIBO SSD images to file.", "");
     argc = argparse_parse(&argparse, argc, argv);
 
-    fd = open(serialdev, O_RDWR | O_NOCTTY);
+    fd = portopen(serialdev);
+
+#ifdef _WIN32
+    fd = CreateFile(serialdev, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (fd == INVALID_HANDLE_VALUE) {
+        printf("Error opening serial port %s\n", serialdev);
+        exit(-1);
+    }  
+#else
     if (fd < 0) {
         perror(serialdev);
         exit(-1);
     }
+#endif
 
-    set_interface_attribs(fd, B57600);
+    set_interface_attribs(&fd, B57600);
     usleep(2000000);
-    tcflush(fd, TCIFLUSH);
+    portflush(fd);
 
-    wlen = write(fd, "b", 1);
+    wlen = portsend(fd, 'b');
     if (wlen != 1) {
         printf("Error from write: %d, %d\n", wlen, errno);
     }
 
-    read(fd, &input, 1);
+    portread(&fd, &input);
     GetSSDInfo(input);
     printinfo();
 
     if (dumppath != NULL) {
         printf("\n");
-        write(fd, "r", 1);
+        portsend(fd, 'r');
         fp = fopen(dumppath, "wb");
 
         for (i = 0; i < ssdinfo.blocks; i++) {
             getblock(fd, curblock, block);
-            write(fd, "n", 1);
+            portsend(fd, 'n');
             curblock++;
             fwrite(&block, sizeof(block), 1, fp);
         }
         fclose(fp);
     }
 
-    close(fd);
+    portclose(fd);
     printf("\n");
 }
