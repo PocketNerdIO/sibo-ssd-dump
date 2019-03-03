@@ -11,6 +11,8 @@ struct {
   int  blocks;
 } ssdinfo;
 
+unsigned int curblock = 0;
+
 void dump(int _blocks) {
   SetMode4(0);
   for (int _block = 0; _block < _blocks; _block++) {
@@ -19,6 +21,15 @@ void dump(int _blocks) {
     for (int b = 0; b < 256; b++) {
       Serial.write(_DataI());
     }
+  }
+}
+
+void dumpblock(int _block) {
+  SetMode4(0);
+  SetAddress4(((long)_block << 8));
+  _Control(0b11010000);
+  for (int b = 0; b < 256; b++) {
+    Serial.write(_DataI());
   }
 }
 
@@ -51,6 +62,18 @@ void loop() {
      case 'i':
      case 'I':
       printinfo();
+      break;
+
+     case 'f':
+      dumpblock(curblock);
+      break;
+      
+     case 'n':
+      curblock++;
+      break;
+
+     case 'r':
+      curblock = 0;
       break;
     }
  }
