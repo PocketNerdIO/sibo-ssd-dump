@@ -12,6 +12,7 @@ struct {
 } ssdinfo;
 
 unsigned int curblock = 0;
+unsigned byte curdev = 0;
 
 void dump(int _blocks) {
   SetMode4(0);
@@ -69,12 +70,21 @@ void loop() {
       break;
       
      case 'n':
-      curblock++;
+      curblock++ % (ssdinfo.blocks + 1);
+      break;
+
+     case 'N':
+      curblock = 0;
+      curdev++ % (ssdinfo.devs + 1);
       break;
 
      case 'r':
       curblock = 0;
       break;
+
+     case 'R':
+      curblock = 0;
+      curdev = 0;
     }
  }
 }
