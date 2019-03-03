@@ -6,10 +6,10 @@ The project has two parts. First is the Arduino sketch that talks to the SSD. Th
 
 With pin 1 on the SSD being closest to its edge, connect the SSD to your Arduino as follows:
 
-SSD Pin 1 -> Arduino Pin 2
-SSD Pin 2 -> Arduino GND
-SSD Pin 5 -> Arduino 5V
-SSD Pin 6 -> Arduino Pin 3
+* SSD Pin 1 -> Arduino Pin 2
+* SSD Pin 2 -> Arduino GND
+* SSD Pin 5 -> Arduino 5V
+* SSD Pin 6 -> Arduino Pin 3
 
 SSD pins 3 and 4 aren't needed for this.
 
