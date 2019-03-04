@@ -37,6 +37,17 @@ struct {
 } ssdinfo;
 
 #ifdef _WIN32
+typedef struct {
+    HANDLE portHandle;
+} SerialDevice;
+#else
+typedef struct {
+    int fd;
+    char path[];
+} SerialDevice;
+#endif
+
+#ifdef _WIN32
 void usleep(int us) {
     Sleep(us);
 }
@@ -87,13 +98,13 @@ bool fsitemexists(const char *filename) {
 #define B9600   CBR_9600
 #define B57600  CBR_57600
 
-int set_interface_attribs(HANDLE *fd, int speed) {
+int set_interface_attribs(SerialDevice *sd, int speed) {
     BOOL Status;
     DCB dcbSerialParams = { 0 };
     COMMTIMEOUTS timeouts = { 0 };
 
     dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
-    Status = GetCommState(*fd, &dcbSerialParams);
+    Status = GetCommState(sd->portHandle, &dcbSerialParams);
     dcbSerialParams.BaudRate = speed;
     dcbSerialParams.ByteSize = 0;
     dcbSerialParams.StopBits = ONESTOPBIT;
@@ -105,35 +116,39 @@ int set_interface_attribs(HANDLE *fd, int speed) {
     timeouts.WriteTotalTimeoutConstant   = 50; // in milliseconds
     timeouts.WriteTotalTimeoutMultiplier = 10; // in milliseconds
 
-    Status = SetCommState(*fd, &dcbSerialParams);
-    Status = SetCommTimeouts(*fd, &timeouts);
+    Status = SetCommState(sd->portHandle, &dcbSerialParams);
+    Status = SetCommTimeouts(sd->portHandle, &timeouts);
     return 0;
 }
 
-HANDLE portopen(const char *serialdev) {
-    return CreateFile(serialdev, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+void portopen(SerialDevice *sd, const char *serialdev) {
+    sd->portHandle = CreateFile(serialdev, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (sd->portHandle == INVALID_HANDLE_VALUE) {
+        printf("Error opening serial port %s\n", serialdev);
+        exit(-1);
+    }  
 }
 
-int portsend(HANDLE *fd, char cmd) {
-    return WriteFile(*fd, &cmd, 1, NULL, NULL);
+int portsend(SerialDevice *sd, char cmd) {
+    return WriteFile(sd->portHandle, &cmd, 1, NULL, NULL);
 }
 
-int portread(HANDLE *fd, unsigned char *buffer) {
-    return ReadFile(*fd, &buffer, 1, NULL, NULL);
+int portread(SerialDevice *sd, unsigned char *buffer) {
+    return ReadFile(sd->portHandle, &buffer, 1, NULL, NULL);
 }
 
-int portflush(HANDLE *fd) {
-    return PurgeComm(*fd, PURGE_RXCLEAR | PURGE_TXCLEAR);
+int portflush(SerialDevice *sd) {
+    return PurgeComm(sd->portHandle, PURGE_RXCLEAR | PURGE_TXCLEAR);
 }
 
-int portclose(HANDLE *fd) {
-    return CloseHandle(*fd);
+int portclose(SerialDevice *sd) {
+    return CloseHandle(sd->portHandle);
 }
 #else
-int set_interface_attribs(int *fd, int speed) {
+int set_interface_attribs(SerialDevice *sd, int speed) {
     struct termios tty;
 
-    if (tcgetattr(*fd, &tty) < 0) {
+    if (tcgetattr(sd->fd, &tty) < 0) {
         printf("Error from tcgetattr: %s\n", strerror(errno));
         return -1;
     }
@@ -155,31 +170,36 @@ int set_interface_attribs(int *fd, int speed) {
     tty.c_cc[VMIN] = 1;
     tty.c_cc[VTIME] = 1;
 
-    if (tcsetattr(*fd, TCSANOW, &tty) != 0) {
+    if (tcsetattr(sd->fd, TCSANOW, &tty) != 0) {
         printf("Error from tcsetattr: %s\n", strerror(errno));
         return -1;
     }
     return 0;
 }
 
-int portopen(const char *serialdev) {
-    return open(serialdev, O_RDWR | O_NOCTTY);
+int portopen(SerialDevice *sd, const char *serialdev) {
+    sd->fd = open(serialdev, O_RDWR | O_NOCTTY);
+    if (sd->fd < 0) {
+        perror(serialdev);
+        exit(-1);
+    }
+    return 0;
 }
 
-int portsend(int fd, char cmd) {
-    return write(fd, &cmd, 1);
+int portsend(SerialDevice *sd, char cmd) {
+    return write(sd->fd, &cmd, 1);
 }
 
-int portread(int *fd, unsigned char *buffer) {
-    return read(*fd, buffer, 1);
+int portread(SerialDevice *sd, unsigned char *buffer) {
+    return read(sd->fd, buffer, 1);
 }
 
-int portflush(int fd) {
-    return tcflush(fd, TCIFLUSH);
+int portflush(SerialDevice *sd) {
+    return tcflush(sd->fd, TCIFLUSH);
 }
 
-int portclose(int fd) {
-    return close(fd);
+int portclose(SerialDevice *sd) {
+    return close(sd->fd);
 }
 #endif
 
@@ -257,7 +277,7 @@ void printinfo() {
     printf("BLOCKS: %d\n", ssdinfo.blocks);
 }
 
-void dump(int fd, const char *path) {
+void dump(SerialDevice *sd, const char *path) {
     FILE *fp;
     unsigned char buffer;
     unsigned int i;
@@ -266,9 +286,9 @@ void dump(int fd, const char *path) {
 
     fp = fopen(path, "wb");
 
-    portsend(fd, 'd');
+    portsend(sd, 'd');
     for (i = 1; i <= ssdinfo.blocks * ssdinfo.devs * 256; i++) {
-        portread(&fd, &buffer);
+        portread(sd, &buffer);
         fwrite(&buffer, sizeof(buffer), 1, fp);
     }
 
@@ -276,26 +296,21 @@ void dump(int fd, const char *path) {
     return;
 }
 
-void getblock(int fd, unsigned int blocknum, unsigned char *block) {
+void getblock(SerialDevice *sd, unsigned int blocknum, unsigned char *block) {
     unsigned int i;
 
     printf("Fetch block %d/%d\r", blocknum, ssdinfo.blocks);
     fflush(stdout);
-    portsend(fd, 'f');
+    portsend(sd, 'f');
     for (i = 0; i <= 255; i++) {
-        portread(&fd, &block[i]);
+        portread(sd, &block[i]);
         // printf(".");
     }
 }
 
 
 int main (int argc, const char **argv) {
-#ifdef _WIN32
-    HANDLE fd;
-#else
-    int fd;
-#endif
-
+    SerialDevice sd;
     int i;
     bool only_list, ignore_attributes, ignore_modtime;
     const char *serialdev = NULL, *dumppath = NULL;
@@ -317,48 +332,39 @@ int main (int argc, const char **argv) {
     argparse_describe(&argparse, "\nDumps SIBO SSD images to file.", "");
     argc = argparse_parse(&argparse, argc, argv);
 
-    fd = portopen(serialdev);
+    portopen(&sd, serialdev);
 
 #ifdef _WIN32
-    fd = CreateFile(serialdev, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-    if (fd == INVALID_HANDLE_VALUE) {
-        printf("Error opening serial port %s\n", serialdev);
-        exit(-1);
-    }  
 #else
-    if (fd < 0) {
-        perror(serialdev);
-        exit(-1);
-    }
 #endif
 
-    set_interface_attribs(&fd, B57600);
+    set_interface_attribs(&sd, B57600);
     usleep(2000000);
-    portflush(fd);
+    portflush(&sd);
 
-    wlen = portsend(fd, 'b');
+    wlen = portsend(&sd, 'b');
     if (wlen != 1) {
         printf("Error from write: %d, %d\n", wlen, errno);
     }
 
-    portread(&fd, &input);
+    portread(&sd, &input);
     GetSSDInfo(input);
     printinfo();
 
     if (dumppath != NULL) {
         printf("\n");
-        portsend(fd, 'r');
+        portsend(&sd, 'r');
         fp = fopen(dumppath, "wb");
 
         for (i = 0; i < ssdinfo.blocks; i++) {
-            getblock(fd, curblock, block);
-            portsend(fd, 'n');
+            getblock(&sd, curblock, block);
+            portsend(&sd, 'n');
             curblock++;
             fwrite(&block, sizeof(block), 1, fp);
         }
         fclose(fp);
+        printf("\n");
     }
 
-    portclose(fd);
-    printf("\n");
+    portclose(&sd);
 }
