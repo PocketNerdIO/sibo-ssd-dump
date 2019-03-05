@@ -6,6 +6,8 @@
 #include <errno.h>
 #include <fcntl.h>
 
+// #define _WIN32
+
 #ifdef _WIN32
     #include <windows.h>
     const char *slash = "\\";
@@ -52,7 +54,7 @@ typedef struct {
 
 #ifdef _WIN32
 void usleep(int us) {
-    Sleep(us);
+    Sleep(us/1000);
 }
 #endif
 
@@ -101,10 +103,13 @@ bool fsitemexists(const char *filename) {
 int portopen(SerialDevice *sd) {
     sd->portHandle = CreateFile(sd->device, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
     if (sd->portHandle == INVALID_HANDLE_VALUE) {
-        printf("Error opening serial port %s\n", sd->device);
-        return(-1);
+        fputs("Unable to open serial port", stderr);
+        // printf("Error opening serial port %s\n", sd->device);
+        sd->portHandle = NULL;
+        return 0;
     }
-    return(0);
+    // printf("%lld\n", sd->portHandle);
+    return 0;
 }
 
 int portcfg(SerialDevice *sd, int speed) {
@@ -115,27 +120,36 @@ int portcfg(SerialDevice *sd, int speed) {
     dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
     Status = GetCommState(sd->portHandle, &dcbSerialParams);
     dcbSerialParams.BaudRate = CBR_57600; // TODO: Test alternative methods
-    dcbSerialParams.ByteSize = 0;
+    dcbSerialParams.ByteSize = 8;
     dcbSerialParams.StopBits = ONESTOPBIT;
     dcbSerialParams.Parity   = NOPARITY;
+    dcbSerialParams.fRtsControl = RTS_CONTROL_DISABLE;
+    dcbSerialParams.fOutxCtsFlow = FALSE;
+    dcbSerialParams.fOutX = FALSE;
+    dcbSerialParams.fInX = FALSE;
     
-    timeouts.ReadIntervalTimeout         = 50; // in milliseconds
-    timeouts.ReadTotalTimeoutConstant    = 50; // in milliseconds
-    timeouts.ReadTotalTimeoutMultiplier  = 10; // in milliseconds
-    timeouts.WriteTotalTimeoutConstant   = 50; // in milliseconds
-    timeouts.WriteTotalTimeoutMultiplier = 10; // in milliseconds
+    timeouts.ReadIntervalTimeout         = 500; // in milliseconds
+    timeouts.ReadTotalTimeoutConstant    = 500; // in milliseconds
+    timeouts.ReadTotalTimeoutMultiplier  = 100; // in milliseconds
+    timeouts.WriteTotalTimeoutConstant   = 500; // in milliseconds
+    timeouts.WriteTotalTimeoutMultiplier = 100; // in milliseconds
 
     Status = SetCommState(sd->portHandle, &dcbSerialParams);
     Status = SetCommTimeouts(sd->portHandle, &timeouts);
     return 0;
 }
 
-int portsend(SerialDevice *sd, char cmd) {
-    return WriteFile(sd->portHandle, &cmd, 1, NULL, NULL);
+int portsend(SerialDevice *sd, char buffer) {
+    DWORD count;
+    printf("Trying to send '%s'...\n", &buffer);
+    WriteFile(sd->portHandle, &buffer, 1, &count, NULL);
+    return (int) count;
 }
 
 int portread(SerialDevice *sd, unsigned char *buffer) {
-    return ReadFile(sd->portHandle, &buffer, 1, NULL, NULL);
+    DWORD count;
+    ReadFile(sd->portHandle, &buffer, 1, &count, NULL);
+    return (int) count;
 }
 
 int portflush(SerialDevice *sd) {
@@ -249,7 +263,7 @@ void printinfo() {
     printf("\n");
 
     printf("DEVICES: %d\n", ssdinfo.devs);
-  
+
     printf("SIZE: ");
     switch (ssdinfo.size) {
         case 0:
@@ -346,7 +360,11 @@ int main (int argc, const char **argv) {
         printf("Error from write: %d, %d\n", wlen, errno);
     }
 
-    portread(&sd, &buffer);
+    wlen = portread(&sd, &buffer);
+    if (wlen != 1) {
+        printf("Error from read: %d, %d\n", wlen, errno);
+    }
+    printf("%x\n", buffer);
     GetSSDInfo(buffer);
     printinfo();
 
