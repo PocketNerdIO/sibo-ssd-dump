@@ -8,11 +8,12 @@
 // #include <time.h>
 // #include <utime.h>
 
-#define BAUDRATE B57600
-
 #ifdef _WIN32
     #include <windows.h>
     const char *slash = "\\";
+
+    #define B9600   CBR_9600
+    #define B57600  CBR_57600
 #else
     // Assume it's something POSIX-compliant
     #include <unistd.h>
@@ -20,6 +21,8 @@
     #include <termios.h>
     const char *slash = "/";
 #endif
+
+#define BAUDRATE B57600 
 
 #include "argparse/argparse.h"
 static const char *const usage[] = {
@@ -39,11 +42,12 @@ struct {
 #ifdef _WIN32
 typedef struct {
     HANDLE portHandle;
+    const char *device;
 } SerialDevice;
 #else
 typedef struct {
     int fd;
-    char path[];
+    const char *device;
 } SerialDevice;
 #endif
 
@@ -95,8 +99,6 @@ bool fsitemexists(const char *filename) {
 //
 #ifdef _WIN32
 
-#define B9600   CBR_9600
-#define B57600  CBR_57600
 
 int set_interface_attribs(SerialDevice *sd, int speed) {
     BOOL Status;
@@ -105,7 +107,7 @@ int set_interface_attribs(SerialDevice *sd, int speed) {
 
     dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
     Status = GetCommState(sd->portHandle, &dcbSerialParams);
-    dcbSerialParams.BaudRate = speed;
+    dcbSerialParams.BaudRate = CBR_57600; // TODO: Test alternative methods
     dcbSerialParams.ByteSize = 0;
     dcbSerialParams.StopBits = ONESTOPBIT;
     dcbSerialParams.Parity   = NOPARITY;
@@ -121,10 +123,10 @@ int set_interface_attribs(SerialDevice *sd, int speed) {
     return 0;
 }
 
-void portopen(SerialDevice *sd, const char *serialdev) {
-    sd->portHandle = CreateFile(serialdev, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+void portopen(SerialDevice *sd) {
+    sd->portHandle = CreateFile(sd->device, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
     if (sd->portHandle == INVALID_HANDLE_VALUE) {
-        printf("Error opening serial port %s\n", serialdev);
+        printf("Error opening serial port %s\n", sd->device);
         exit(-1);
     }  
 }
@@ -177,10 +179,10 @@ int set_interface_attribs(SerialDevice *sd, int speed) {
     return 0;
 }
 
-int portopen(SerialDevice *sd, const char *serialdev) {
-    sd->fd = open(serialdev, O_RDWR | O_NOCTTY);
+int portopen(SerialDevice *sd) {
+    sd->fd = open(sd->device, O_RDWR | O_NOCTTY);
     if (sd->fd < 0) {
-        perror(serialdev);
+        perror(sd->device);
         exit(-1);
     }
     return 0;
@@ -323,7 +325,7 @@ int main (int argc, const char **argv) {
 
     struct argparse_option options[] = {
         OPT_HELP(),
-        OPT_STRING('s', "serial", &serialdev, "set serial device of arduino"),
+        OPT_STRING('s', "serial", &sd.device, "set serial device of arduino"),
         OPT_STRING('d', "dump", &dumppath, "dump to file"),
         OPT_END(),
     };
@@ -332,7 +334,7 @@ int main (int argc, const char **argv) {
     argparse_describe(&argparse, "\nDumps SIBO SSD images to file.", "");
     argc = argparse_parse(&argparse, argc, argv);
 
-    portopen(&sd, serialdev);
+    portopen(&sd);
 
 #ifdef _WIN32
 #else
