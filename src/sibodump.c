@@ -5,8 +5,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-// #include <time.h>
-// #include <utime.h>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -100,6 +98,15 @@ bool fsitemexists(const char *filename) {
 //
 #ifdef _WIN32
 
+int portopen(SerialDevice *sd) {
+    sd->portHandle = CreateFile(sd->device, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (sd->portHandle == INVALID_HANDLE_VALUE) {
+        printf("Error opening serial port %s\n", sd->device);
+        return(-1);
+    }
+    return(0);
+}
+
 int portcfg(SerialDevice *sd, int speed) {
     BOOL Status;
     DCB dcbSerialParams = { 0 };
@@ -112,7 +119,6 @@ int portcfg(SerialDevice *sd, int speed) {
     dcbSerialParams.StopBits = ONESTOPBIT;
     dcbSerialParams.Parity   = NOPARITY;
     
-
     timeouts.ReadIntervalTimeout         = 50; // in milliseconds
     timeouts.ReadTotalTimeoutConstant    = 50; // in milliseconds
     timeouts.ReadTotalTimeoutMultiplier  = 10; // in milliseconds
@@ -122,14 +128,6 @@ int portcfg(SerialDevice *sd, int speed) {
     Status = SetCommState(sd->portHandle, &dcbSerialParams);
     Status = SetCommTimeouts(sd->portHandle, &timeouts);
     return 0;
-}
-
-void portopen(SerialDevice *sd) {
-    sd->portHandle = CreateFile(sd->device, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-    if (sd->portHandle == INVALID_HANDLE_VALUE) {
-        printf("Error opening serial port %s\n", sd->device);
-        exit(-1);
-    }  
 }
 
 int portsend(SerialDevice *sd, char cmd) {
@@ -149,6 +147,15 @@ int portclose(SerialDevice *sd) {
 }
 
 #else
+
+int portopen(SerialDevice *sd) {
+    sd->fd = open(sd->device, O_RDWR | O_NOCTTY);
+    if (sd->fd < 0) {
+        perror(sd->device);
+        exit(-1);
+    }
+    return 0;
+}
 
 int portcfg(SerialDevice *sd, int speed) {
     struct termios tty;
@@ -178,15 +185,6 @@ int portcfg(SerialDevice *sd, int speed) {
     if (tcsetattr(sd->fd, TCSANOW, &tty) != 0) {
         printf("Error from tcsetattr: %s\n", strerror(errno));
         return -1;
-    }
-    return 0;
-}
-
-int portopen(SerialDevice *sd) {
-    sd->fd = open(sd->device, O_RDWR | O_NOCTTY);
-    if (sd->fd < 0) {
-        perror(sd->device);
-        exit(-1);
     }
     return 0;
 }
