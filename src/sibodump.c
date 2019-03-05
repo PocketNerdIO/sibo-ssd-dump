@@ -336,10 +336,6 @@ int main (int argc, const char **argv) {
 
     portopen(&sd);
 
-#ifdef _WIN32
-#else
-#endif
-
     set_interface_attribs(&sd, B57600);
     usleep(2000000);
     portflush(&sd);
