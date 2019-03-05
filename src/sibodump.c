@@ -48,6 +48,7 @@ typedef struct {
 typedef struct {
     int fd;
     const char *device;
+    struct termios tty;
 } SerialDevice;
 #endif
 
@@ -99,8 +100,7 @@ bool fsitemexists(const char *filename) {
 //
 #ifdef _WIN32
 
-
-int set_interface_attribs(SerialDevice *sd, int speed) {
+int portcfg(SerialDevice *sd, int speed) {
     BOOL Status;
     DCB dcbSerialParams = { 0 };
     COMMTIMEOUTS timeouts = { 0 };
@@ -111,6 +111,7 @@ int set_interface_attribs(SerialDevice *sd, int speed) {
     dcbSerialParams.ByteSize = 0;
     dcbSerialParams.StopBits = ONESTOPBIT;
     dcbSerialParams.Parity   = NOPARITY;
+    
 
     timeouts.ReadIntervalTimeout         = 50; // in milliseconds
     timeouts.ReadTotalTimeoutConstant    = 50; // in milliseconds
@@ -146,8 +147,10 @@ int portflush(SerialDevice *sd) {
 int portclose(SerialDevice *sd) {
     return CloseHandle(sd->portHandle);
 }
+
 #else
-int set_interface_attribs(SerialDevice *sd, int speed) {
+
+int portcfg(SerialDevice *sd, int speed) {
     struct termios tty;
 
     if (tcgetattr(sd->fd, &tty) < 0) {
@@ -203,7 +206,9 @@ int portflush(SerialDevice *sd) {
 int portclose(SerialDevice *sd) {
     return close(sd->fd);
 }
+
 #endif
+
 
 void GetSSDInfo(char input) {
     ssdinfo.infobyte = input;
@@ -314,10 +319,9 @@ void getblock(SerialDevice *sd, unsigned int blocknum, unsigned char *block) {
 int main (int argc, const char **argv) {
     SerialDevice sd;
     int i;
-    bool only_list, ignore_attributes, ignore_modtime;
-    const char *serialdev = NULL, *dumppath = NULL;
+    const char *dumppath = NULL;
     int result;
-    unsigned char input;
+    unsigned char buffer;
     unsigned int curblock = 0;
     unsigned char block[256];
     FILE *fp;
@@ -335,8 +339,7 @@ int main (int argc, const char **argv) {
     argc = argparse_parse(&argparse, argc, argv);
 
     portopen(&sd);
-
-    set_interface_attribs(&sd, B57600);
+    portcfg(&sd, B57600);
     usleep(2000000);
     portflush(&sd);
 
@@ -345,8 +348,8 @@ int main (int argc, const char **argv) {
         printf("Error from write: %d, %d\n", wlen, errno);
     }
 
-    portread(&sd, &input);
-    GetSSDInfo(input);
+    portread(&sd, &buffer);
+    GetSSDInfo(buffer);
     printinfo();
 
     if (dumppath != NULL) {
@@ -360,6 +363,7 @@ int main (int argc, const char **argv) {
             curblock++;
             fwrite(&block, sizeof(block), 1, fp);
         }
+
         fclose(fp);
         printf("\n");
     }
