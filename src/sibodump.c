@@ -10,6 +10,7 @@
 
 #ifdef _WIN32
     #include <windows.h>
+    #include <tchar.h>
     const char *slash = "\\";
 
     #define B9600   CBR_9600
@@ -100,6 +101,15 @@ bool fsitemexists(const char *filename) {
 //
 #ifdef _WIN32
 
+void PrintCommState(DCB dcb) {
+    //  Print some of the DCB structure values
+    _tprintf( TEXT("BaudRate = %ld, ByteSize = %d, Parity = %d, StopBits = %d\n"), 
+              dcb.BaudRate, 
+              dcb.ByteSize, 
+              dcb.Parity,
+              dcb.StopBits );
+}
+
 int portopen(SerialDevice *sd) {
     sd->portHandle = CreateFile(sd->device, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
     if (sd->portHandle == INVALID_HANDLE_VALUE) {
@@ -113,42 +123,62 @@ int portopen(SerialDevice *sd) {
 }
 
 int portcfg(SerialDevice *sd, int speed) {
-    BOOL Status;
-    DCB dcbSerialParams = { 0 };
+    BOOL Success;
+    DCB dcb;
     COMMTIMEOUTS timeouts = { 0 };
 
-    dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
-    Status = GetCommState(sd->portHandle, &dcbSerialParams);
-    dcbSerialParams.BaudRate = CBR_57600; // TODO: Test alternative methods
-    dcbSerialParams.ByteSize = 8;
-    dcbSerialParams.StopBits = ONESTOPBIT;
-    dcbSerialParams.Parity   = NOPARITY;
-    dcbSerialParams.fRtsControl = RTS_CONTROL_DISABLE;
-    dcbSerialParams.fOutxCtsFlow = FALSE;
-    dcbSerialParams.fOutX = FALSE;
-    dcbSerialParams.fInX = FALSE;
-    
-    timeouts.ReadIntervalTimeout         = 500; // in milliseconds
-    timeouts.ReadTotalTimeoutConstant    = 500; // in milliseconds
-    timeouts.ReadTotalTimeoutMultiplier  = 100; // in milliseconds
-    timeouts.WriteTotalTimeoutConstant   = 500; // in milliseconds
-    timeouts.WriteTotalTimeoutMultiplier = 100; // in milliseconds
+    dcb.DCBlength = sizeof(dcb);
+    Success = GetCommState(sd->portHandle, &dcb);
+    if (!Success) {
+        printf("GetCommState failed with error %ld.\n", GetLastError());
+        return 2;
+    }
+    // PrintCommState(dcb);
 
-    Status = SetCommState(sd->portHandle, &dcbSerialParams);
-    Status = SetCommTimeouts(sd->portHandle, &timeouts);
+    dcb.BaudRate = speed; // TODO: Test alternative methods
+    dcb.ByteSize = 8;
+    dcb.StopBits = ONESTOPBIT;
+    dcb.Parity   = NOPARITY;
+    dcb.fRtsControl = RTS_CONTROL_DISABLE;
+    dcb.fOutxCtsFlow = FALSE;
+    dcb.fOutX = FALSE;
+    dcb.fInX = FALSE;
+    
+    timeouts.ReadIntervalTimeout         = 50; // in milliseconds
+    timeouts.ReadTotalTimeoutConstant    = 50; // in milliseconds
+    timeouts.ReadTotalTimeoutMultiplier  = 10; // in milliseconds
+    timeouts.WriteTotalTimeoutConstant   = 50; // in milliseconds
+    timeouts.WriteTotalTimeoutMultiplier = 10; // in milliseconds
+
+    // PrintCommState(dcb);
+
+    Success = SetCommState(sd->portHandle, &dcb);
+    if (!Success) {
+        printf("SetCommState failed with error %ld.\n", GetLastError());
+        return 1;
+    }
+    Success = GetCommState(sd->portHandle, &dcb);
+    if (!Success) {
+        printf("Second GetCommState failed with error %ld.\n", GetLastError());
+        return 3;
+    }
+    // PrintCommState(dcb);
+
+
+    Success = SetCommTimeouts(sd->portHandle, &timeouts);
     return 0;
 }
 
 int portsend(SerialDevice *sd, char buffer) {
     DWORD count;
-    printf("Trying to send '%s'...\n", &buffer);
+    // printf("Trying to send '%s' (%x)...\n", &buffer, buffer);
     WriteFile(sd->portHandle, &buffer, 1, &count, NULL);
     return (int) count;
 }
 
 int portread(SerialDevice *sd, unsigned char *buffer) {
     DWORD count;
-    ReadFile(sd->portHandle, &buffer, 1, &count, NULL);
+    ReadFile(sd->portHandle, buffer, 1, &count, NULL);
     return (int) count;
 }
 
@@ -203,8 +233,8 @@ int portcfg(SerialDevice *sd, int speed) {
     return 0;
 }
 
-int portsend(SerialDevice *sd, char cmd) {
-    return write(sd->fd, &cmd, 1);
+int portsend(SerialDevice *sd, char buffer) {
+    return write(sd->fd, &buffer, 1);
 }
 
 int portread(SerialDevice *sd, unsigned char *buffer) {
@@ -318,7 +348,7 @@ void dump(SerialDevice *sd, const char *path) {
 void getblock(SerialDevice *sd, unsigned int blocknum, unsigned char *block) {
     unsigned int i;
 
-    printf("Fetch block %d/%d\r", blocknum, ssdinfo.blocks);
+    printf("Fetch block %d (0 to %d, total %d)\r", blocknum, ssdinfo.blocks - 1, ssdinfo.blocks);
     fflush(stdout);
     portsend(sd, 'f');
     for (i = 0; i <= 255; i++) {
@@ -364,7 +394,7 @@ int main (int argc, const char **argv) {
     if (wlen != 1) {
         printf("Error from read: %d, %d\n", wlen, errno);
     }
-    printf("%x\n", buffer);
+    // printf("%x\n", buffer);
     GetSSDInfo(buffer);
     printinfo();
 
