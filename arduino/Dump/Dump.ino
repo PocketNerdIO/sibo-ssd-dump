@@ -12,7 +12,7 @@ struct {
 } ssdinfo;
 
 unsigned int curblock = 0;
-unsigned byte curdev = 0;
+byte curdev = 0;
 
 void dump(int _blocks) {
   SetMode4(0);
