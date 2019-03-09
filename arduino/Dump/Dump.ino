@@ -2,6 +2,11 @@
 #define CLOCK 2
 #define CYCLE 20
 
+#define SP_SCTL_READ_MULTI_BYTE   0b11010000
+#define SP_SCTL_READ_SINGLE_BYTE  0b11000000
+#define SP_SCTL_WRITE_MULTI_BYTE  0b10010000
+#define SP_SCTL_WRITE_SINGLE_BYTE 0b10000000
+#define SP_SSEL                   0b01000000
 
 struct {
   byte infobyte;
@@ -18,7 +23,7 @@ void dump(int _blocks) {
   SetMode4(0);
   for (int _block = 0; _block < _blocks; _block++) {
     SetAddress4(((long)_block << 8));
-    _Control(0b11010000);
+    _Control(SP_SCTL_READ_MULTI_BYTE | 0b0000);
     for (int b = 0; b < 256; b++) {
       Serial.write(_DataI());
     }
@@ -85,6 +90,7 @@ void loop() {
      case 'R':
       curblock = 0;
       curdev = 0;
+      GetSSDInfo();
     }
  }
 }
@@ -155,17 +161,17 @@ void printinfo() {
 }
 
 void DeselectASIC() {
-  _Control(0b01000000);
+  _Control(SP_SSEL);
 }
 
 byte ReadByte(unsigned long address) {
   SetAddress4(address);
-  _Control(0b11000000);
+  _Control(SP_SCTL_READ_SINGLE_BYTE | 0b0000);
   return _DataI();
 }
 
 void ReadBytes(byte* buffer, unsigned long address, int count) {
-  _Control(0b11010000);
+  _Control(SP_SCTL_READ_MULTI_BYTE | 0b0000);
   for (int _cx = 0; _cx < count; _cx++)
     buffer[_cx] = _DataI();
 }
@@ -175,7 +181,7 @@ void Reset() {
 }
 
 void SelectASIC4() {
-  _Control(0b01000010);
+  _Control(SP_SSEL | 2);
 }
 
 void SetAddress4(unsigned long address) {
@@ -184,18 +190,18 @@ void SetAddress4(unsigned long address) {
   byte a2 = (address >> 16) & 0xFF;
 
   // ports D + C????
-  _Control(0b10010011); 
+  _Control(SP_SCTL_WRITE_MULTI_BYTE | 0b0011); 
   _DataO(a1);
   _DataO(a2);
   
   // send port b address
-  _Control(0b10000001);
+  _Control(SP_SCTL_WRITE_SINGLE_BYTE | 0b0001);
   _DataO(a0);
 }
 
 void SetMode4(byte mode) {
   // changed from 0b10100010
-  _Control(0b10000010);
+  _Control(SP_SCTL_WRITE_SINGLE_BYTE | 0b0010);
   _DataO(mode & 0x0F);
 }
 
