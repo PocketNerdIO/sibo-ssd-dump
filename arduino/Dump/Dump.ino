@@ -20,9 +20,9 @@ unsigned int curblock = 0;
 byte curdev = 0;
 
 void dump(int _blocks) {
-  SetMode4(0);
+  SetMode(0);
   for (int _block = 0; _block < _blocks; _block++) {
-    SetAddress4(((long)_block << 8));
+    SetAddress5(((long)_block << 8));
     _Control(SP_SCTL_READ_MULTI_BYTE | 0b0000);
     for (int b = 0; b < 256; b++) {
       Serial.write(_DataI());
@@ -31,8 +31,8 @@ void dump(int _blocks) {
 }
 
 void dumpblock(int _block) {
-  SetMode4(0);
-  SetAddress4(((long)_block << 8));
+  SetMode(0);
+  SetAddress5(((long)_block << 8));
   _Control(0b11010000);
   for (int b = 0; b < 256; b++) {
     Serial.write(_DataI());
@@ -46,7 +46,7 @@ void setup() {
   digitalWrite(CLOCK, LOW);
   
   Reset();
-  SelectASIC4();
+  SelectASIC5();
 
   GetSSDInfo();
 }
@@ -165,7 +165,7 @@ void DeselectASIC() {
 }
 
 byte ReadByte(unsigned long address) {
-  SetAddress4(address);
+  SetAddress5(address);
   _Control(SP_SCTL_READ_SINGLE_BYTE | 0b0000);
   return _DataI();
 }
@@ -180,11 +180,11 @@ void Reset() {
   _Control(0b00000000);
 }
 
-void SelectASIC4() {
+void SelectASIC5() {
   _Control(SP_SSEL | 2);
 }
 
-void SetAddress4(unsigned long address) {
+void SetAddress5(unsigned long address) {
   byte a0 = address & 0xFF;
   byte a1 = (address >> 8) & 0xFF; 
   byte a2 = (address >> 16) & 0xFF;
@@ -199,7 +199,7 @@ void SetAddress4(unsigned long address) {
   _DataO(a0);
 }
 
-void SetMode4(byte mode) {
+void SetMode(byte mode) {
   // changed from 0b10100010
   _Control(SP_SCTL_WRITE_SINGLE_BYTE | 0b0010);
   _DataO(mode & 0x0F);
