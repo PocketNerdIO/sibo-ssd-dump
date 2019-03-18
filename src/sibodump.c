@@ -1,3 +1,8 @@
+// TODO: Device selection
+// TODO: Force ASIC5 mode
+// TODO: MD5 error checking
+// TODO: Timeout for reads and counting of bytes
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,8 +10,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-
-// #define _WIN32
 
 #ifdef _WIN32
     #include <windows.h>
@@ -345,10 +348,10 @@ void dump(SerialDevice *sd, const char *path) {
     return;
 }
 
-void getblock(SerialDevice *sd, unsigned int blocknum, unsigned char *block) {
+void getblock(SerialDevice *sd, unsigned int blocknum, unsigned char curdev, unsigned char *block) {
     unsigned int i;
 
-    printf("Fetch block %d (0 to %d, total %d)\r", blocknum, ssdinfo.blocks - 1, ssdinfo.blocks);
+    printf("Fetch block %d (0 to %d, total %d) on device %d\r", blocknum, ssdinfo.blocks - 1, ssdinfo.blocks, curdev);
     fflush(stdout);
     portsend(sd, 'f');
     for (i = 0; i <= 255; i++) {
@@ -366,6 +369,7 @@ int main (int argc, const char **argv) {
     unsigned char buffer;
     unsigned int curblock = 0;
     unsigned char block[256];
+    unsigned char curdev;
     FILE *fp;
     int wlen;
 
@@ -400,14 +404,18 @@ int main (int argc, const char **argv) {
 
     if (dumppath != NULL) {
         printf("\n");
-        portsend(&sd, 'r');
+        portsend(&sd, 'R');
         fp = fopen(dumppath, "wb");
 
-        for (i = 0; i < ssdinfo.blocks; i++) {
-            getblock(&sd, curblock, block);
-            portsend(&sd, 'n');
-            curblock++;
-            fwrite(&block, sizeof(block), 1, fp);
+        for (curdev = 0; curdev < ssdinfo.devs; curdev++) {
+            for (i = 0; i < ssdinfo.blocks; i++) {
+                getblock(&sd, curblock, curdev, block);
+                portsend(&sd, 'n');
+                curblock++;
+                fwrite(&block, sizeof(block), 1, fp);
+            }
+            portsend(&sd, 'N');
+            curblock = 0;
         }
 
         fclose(fp);

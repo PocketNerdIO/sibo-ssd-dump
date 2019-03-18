@@ -1,3 +1,12 @@
+// TODO: Device selection
+// TODO: Detect ASIC4
+// TODO: Force ASIC5 mode
+// TODO: MD5 error checking
+// ? If Port D is set, what happens to Port C?
+// ?  - Is it reset to 0?
+// ?  - Are just the first 5 bits reset, so the device (CS) is the same?
+// ?  - Is it untouched?
+
 #define DATA 3
 #define CLOCK 2
 #define CYCLE 20
@@ -180,6 +189,10 @@ void Reset() {
   _Control(0b00000000);
 }
 
+void SelectASIC4() {
+  _Control(SP_SSEL | 6);
+}
+
 void SelectASIC5() {
   _Control(SP_SSEL | 2);
 }
@@ -187,7 +200,7 @@ void SelectASIC5() {
 void SetAddress5(unsigned long address) {
   byte a0 = address & 0xFF;
   byte a1 = (address >> 8) & 0xFF; 
-  byte a2 = (address >> 16) & 0xFF;
+  byte a2 = ((address >> 16) & 0b00011111) | ((curdev << 6) & 0b11000000);
 
   // ports D + C????
   _Control(SP_SCTL_WRITE_MULTI_BYTE | 0b0011); 
