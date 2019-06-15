@@ -139,7 +139,7 @@ void printinfo() {
       Serial.println("ROM");
       break;
     case 7:
-      Serial.println("???");
+      Serial.println("Hardware write-protected SSD");
       break;
   }
   
@@ -149,8 +149,8 @@ void printinfo() {
   Serial.print("SIZE: ");
   switch (ssdinfo.size) {
     case 0:
-      Serial.println("0");
-      break;
+      Serial.println("No SSD Detected");
+      return;
     case 1:
       Serial.println("32KB");
       break;

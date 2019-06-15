@@ -230,8 +230,12 @@ void GetSSDInfo(char input) {
 }
 
 void printinfo() {
-    long unsigned int blocks;
     printf("ASIC: %d\n", ssdinfo.asic);
+    if (ssdinfo.infobyte == 0) {
+        printf("No SSD detected.\n");
+        return;
+    }
+
     printf("TYPE: ");
     switch (ssdinfo.type) {
         case 0:
@@ -256,7 +260,7 @@ void printinfo() {
             printf("ROM");
             break;
         case 7:
-            printf("???");
+            printf("Hardware write-protected SSD");
             break;
     }
     printf("\n");
@@ -266,7 +270,7 @@ void printinfo() {
     printf("SIZE: ");
     switch (ssdinfo.size) {
         case 0:
-            printf("0");
+            printf("No SSD Detected");
             break;
         case 1:
             printf("32KB");
