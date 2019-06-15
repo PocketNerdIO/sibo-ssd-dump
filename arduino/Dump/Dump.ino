@@ -17,6 +17,9 @@
 #define SP_SCTL_WRITE_SINGLE_BYTE 0b10000000
 #define SP_SSEL                   0b01000000
 
+#define ID_ASIC4 6
+#define ID_ASIC5 2
+
 struct {
   byte infobyte;
   byte type;
@@ -27,6 +30,7 @@ struct {
 
 unsigned int curblock = 0;
 byte curdev = 0;
+bool is_asic4 = false;
 
 void dump(int _blocks) {
   SetMode(0);
@@ -55,15 +59,17 @@ void setup() {
   digitalWrite(CLOCK, LOW);
   
   Reset();
-  SelectASIC5();
-
-  GetSSDInfo();
 }
 
 void loop() {
   while (Serial.available() > 0) {
    char incomingCharacter = Serial.read();
    switch (incomingCharacter) {
+     case 'a':
+     case 'A':
+      Serial.write(is_asic4 ? 4 : 5);
+      break;
+
      case 'b':
      case 'B':
       Serial.write(ssdinfo.infobyte);
@@ -99,13 +105,16 @@ void loop() {
      case 'R':
       curblock = 0;
       curdev = 0;
-      GetSSDInfo();
+      Reset();
     }
  }
 }
 
 void printinfo() {
   long unsigned int blocks;
+  if (is_asic4) {
+    Serial.println("ASIC4 detected.");
+  }
   Serial.print("TYPE: ");
   switch (ssdinfo.type) {
     case 0:
@@ -186,15 +195,22 @@ void ReadBytes(byte* buffer, unsigned long address, int count) {
 }
 
 void Reset() {
+  curblock = 0;
+  curdev = 0;
   _Control(0b00000000);
+  is_asic4 = SelectASIC4();
+  SelectASIC5();
+  GetSSDInfo();
 }
 
-void SelectASIC4() {
-  _Control(SP_SSEL | 6);
+bool SelectASIC4() {
+  _Control(SP_SSEL | ID_ASIC4);
+  GetSSDInfo();
+  return (ssdinfo.infobyte > 0);
 }
 
 void SelectASIC5() {
-  _Control(SP_SSEL | 2);
+  _Control(SP_SSEL | ID_ASIC5);
 }
 
 void SetAddress5(unsigned long address) {

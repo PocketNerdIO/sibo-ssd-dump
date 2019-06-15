@@ -7,9 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <ctype.h>
+// #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include "statwrap.h"
 
 #ifdef _WIN32
     #include <windows.h>
@@ -21,7 +22,6 @@
 #else
     // Assume it's something POSIX-compliant
     #include <unistd.h>
-    #include <sys/stat.h>
     #include <termios.h>
     const char *slash = "/";
 #endif
@@ -41,6 +41,7 @@ struct {
     unsigned char devs;
     unsigned char size;
     unsigned int  blocks;
+    unsigned char asic;
 } ssdinfo;
 
 #ifdef _WIN32
@@ -62,42 +63,6 @@ void usleep(int us) {
 }
 #endif
 
-#ifdef _WIN32
-BOOL fileexists(LPCTSTR szPath) {
-  DWORD dwAttrib = GetFileAttributes(szPath);
-
-  return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
-}
-
-BOOL direxists(LPCTSTR szPath) {
-  DWORD dwAttrib = GetFileAttributes(szPath);
-
-  return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
-}
-
-BOOL fsitemexists(LPCTSTR szPath) {
-  DWORD dwAttrib = GetFileAttributes(szPath);
-
-  return (dwAttrib != INVALID_FILE_ATTRIBUTES);
-}
-
-#else
-bool fileexists(const char *filename) {
-    struct stat path_stat;
-
-    return (stat(filename, &path_stat) == 0 && S_ISREG(path_stat.st_mode));
-}
-bool direxists(const char *filename) {
-    struct stat path_stat;
-
-    return (stat(filename, &path_stat) == 0 && S_ISDIR(path_stat.st_mode));
-}
-bool fsitemexists(const char *filename) {
-    struct stat path_stat;
-
-    return (stat(filename, &path_stat) == 0);
-}
-#endif
 
 //
 // Serial Port Configuration
@@ -266,6 +231,7 @@ void GetSSDInfo(char input) {
 
 void printinfo() {
     long unsigned int blocks;
+    printf("ASIC: %d\n", ssdinfo.asic);
     printf("TYPE: ");
     switch (ssdinfo.type) {
         case 0:
@@ -398,6 +364,20 @@ int main (int argc, const char **argv) {
     if (wlen != 1) {
         printf("Error from read: %d, %d\n", wlen, errno);
     }
+
+    GetSSDInfo(buffer);
+
+    wlen = portsend(&sd, 'a');
+    if (wlen != 1) {
+        printf("Error from write: %d, %d\n", wlen, errno);
+    }
+
+    wlen = portread(&sd, &buffer);
+    if (wlen != 1) {
+        printf("Error from read: %d, %d\n", wlen, errno);
+    }
+    ssdinfo.asic = buffer;
+
     // printf("%x\n", buffer);
     GetSSDInfo(buffer);
     printinfo();
