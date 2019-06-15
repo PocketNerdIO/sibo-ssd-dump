@@ -26,16 +26,19 @@ struct {
   byte devs;
   byte size;
   int  blocks;
+  byte asic4inputreg;
+  byte asic4devsizereg;
 } ssdinfo;
 
 unsigned int curblock = 0;
 byte curdev = 0;
 bool is_asic4 = false;
+bool force_asic5 = true;
 
 void dump(int _blocks) {
   SetMode(0);
   for (int _block = 0; _block < _blocks; _block++) {
-    SetAddress5(((long)_block << 8));
+    SetAddress(((long)_block << 8));
     _Control(SP_SCTL_READ_MULTI_BYTE | 0b0000);
     for (int b = 0; b < 256; b++) {
       Serial.write(_DataI());
@@ -45,7 +48,7 @@ void dump(int _blocks) {
 
 void dumpblock(int _block) {
   SetMode(0);
-  SetAddress5(((long)_block << 8));
+  SetAddress(((long)_block << 8));
   _Control(0b11010000);
   for (int b = 0; b < 256; b++) {
     Serial.write(_DataI());
@@ -65,9 +68,19 @@ void loop() {
   while (Serial.available() > 0) {
    char incomingCharacter = Serial.read();
    switch (incomingCharacter) {
+     case '4':
+      force_asic5 = false;
+      Serial.print("4OK");
+      break;
+
+     case '5':
+      force_asic5 = true;
+      Serial.print("5OK");
+      break;
+
      case 'a':
      case 'A':
-      Serial.write(is_asic4 ? 4 : 5);
+      Serial.print(is_asic4 ? 4 : 5);
       break;
 
      case 'b':
@@ -103,8 +116,6 @@ void loop() {
       break;
 
      case 'R':
-      curblock = 0;
-      curdev = 0;
       Reset();
     }
  }
@@ -112,9 +123,9 @@ void loop() {
 
 void printinfo() {
   long unsigned int blocks;
-  if (is_asic4) {
-    Serial.println("ASIC4 detected.");
-  }
+  // if (is_asic4) {
+  //   Serial.println("ASIC4 detected.");
+  // }
   Serial.print("TYPE: ");
   switch (ssdinfo.type) {
     case 0:
@@ -176,6 +187,17 @@ void printinfo() {
 
   Serial.print("BLOCKS: ");
   Serial.println(ssdinfo.blocks);
+
+  if (is_asic4) {
+    Serial.print("ASIC4 detected.");
+    if (force_asic5) Serial.print(" (ASIC5 mode forced)");
+    Serial.println();
+    Serial.print("Input Register: ");
+    Serial.println(ssdinfo.asic4inputreg);
+    Serial.print("Device Size Register: ");
+    Serial.println(ssdinfo.asic4devsizereg);
+  }
+
 }
 
 void DeselectASIC() {
@@ -199,18 +221,34 @@ void Reset() {
   curdev = 0;
   _Control(0b00000000);
   is_asic4 = SelectASIC4();
-  SelectASIC5();
-  GetSSDInfo();
+  // ssdinfo.asic4inputreg = is_asic4 ? GetASIC4InputRegister() : 0;
+  // ssdinfo.asic4devsizereg = is_asic4 ? GetASIC4DevSizeRegister() : 0;
+  if (!is_asic4 || force_asic5) SelectASIC5();
 }
 
 bool SelectASIC4() {
   _Control(SP_SSEL | ID_ASIC4);
   GetSSDInfo();
-  return (ssdinfo.infobyte > 0);
+
+  if (ssdinfo.infobyte > 0) {
+    ssdinfo.asic4inputreg = GetASIC4InputRegister();
+    ssdinfo.asic4devsizereg = GetASIC4DevSizeRegister();
+    return true;
+  } else {
+    ssdinfo.asic4inputreg = 0;
+    ssdinfo.asic4devsizereg = 0;
+    return false;
+  }
 }
 
-void SelectASIC5() {
+bool SelectASIC5() {
+  ssdinfo.asic4inputreg = 0;
+  ssdinfo.asic4devsizereg = 0;
+
   _Control(SP_SSEL | ID_ASIC5);
+  GetSSDInfo();
+
+  return (ssdinfo.infobyte > 0);
 }
 
 void SetAddress5(unsigned long address) {
@@ -226,6 +264,27 @@ void SetAddress5(unsigned long address) {
   // send port b address
   _Control(SP_SCTL_WRITE_SINGLE_BYTE | 0b0001);
   _DataO(a0);
+}
+
+void SetAddress4(unsigned long address) {
+  byte a0 = address & 0xFF;
+  byte a1 = (address >> 8) & 0xFF; 
+  byte a2 = (address >> 16) & 0xFF; 
+  byte a3 = ((address >> 24) & 0b00001111) | ((curdev << 4) & 0b00110000 | 0b01000000);
+
+  _Control(SP_SCTL_WRITE_MULTI_BYTE | 0b0011); 
+  _DataO(a0);
+  if (address & 0xFFFFFF00 != 0) _DataO(a1);
+  if (address & 0xFFFF0000 != 0) _DataO(a2);
+  if (address & 0xFF000000 != 0) _DataO(a3);
+  }
+
+void SetAddress(unsigned long address) {
+  if (is_asic4 && !force_asic5) {
+    SetAddress4(address);
+  } else {
+    SetAddress5(address);
+  }
 }
 
 void SetMode(byte mode) {
@@ -312,4 +371,14 @@ void _DataO(byte data) {
 void _Null() {
   pinMode(DATA, INPUT);
   _Cycle(12);
+}
+
+byte GetASIC4InputRegister() {
+  _Control(SP_SCTL_READ_SINGLE_BYTE | 0b0001); // Register 1
+  return _DataI();
+}
+
+byte GetASIC4DevSizeRegister() {
+  _Control(SP_SCTL_WRITE_SINGLE_BYTE | 0b0001); // Register 1
+  return _DataI();
 }
