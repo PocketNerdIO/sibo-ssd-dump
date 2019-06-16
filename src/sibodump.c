@@ -340,6 +340,8 @@ int main (int argc, const char **argv) {
     unsigned int curblock = 0;
     unsigned char block[256];
     unsigned char curdev;
+    int firstblockonly = 0;
+    int force_asic5 = 0;
     FILE *fp;
     int wlen;
 
@@ -347,6 +349,8 @@ int main (int argc, const char **argv) {
         OPT_HELP(),
         OPT_STRING('s', "serial", &sd.device, "set serial device of arduino"),
         OPT_STRING('d', "dump", &dumppath, "dump to file"),
+        OPT_BOOLEAN('f', "firstblockonly", &firstblockonly, "only pull the first block (256 characters)"),
+        OPT_BOOLEAN('5', "forceasic5", &force_asic5, "Force ASIC5 mode, even if the SSD has an ASIC4."),
         OPT_END(),
     };
     struct argparse argparse;
@@ -358,6 +362,18 @@ int main (int argc, const char **argv) {
     portcfg(&sd, B57600);
     usleep(2000000);
     portflush(&sd);
+
+    if (force_asic5 != 0) {
+        printf("FORCING ASIC5!\n");
+
+        wlen = portsend(&sd, '5');
+    } else {
+        printf("ALLOWING ASIC4!\n");
+        wlen = portsend(&sd, '4');
+    }
+    if (wlen != 1) {
+        printf("Error from write: %d, %d\n", wlen, errno);
+    }
 
     wlen = portsend(&sd, 'b');
     if (wlen != 1) {
@@ -390,6 +406,12 @@ int main (int argc, const char **argv) {
         printf("\n");
         portsend(&sd, 'R');
         fp = fopen(dumppath, "wb");
+
+        if (firstblockonly != 0) { // fake some SSD info
+            ssdinfo.devs = 1;
+            ssdinfo.blocks = 1;
+        }
+        printf("SSDINFO DEVS/BLOCKS = %d/%d\n", ssdinfo.devs, ssdinfo.blocks);
 
         for (curdev = 0; curdev < ssdinfo.devs; curdev++) {
             for (i = 0; i < ssdinfo.blocks; i++) {

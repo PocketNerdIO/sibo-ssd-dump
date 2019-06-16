@@ -1,6 +1,4 @@
 // TODO: Device selection
-// TODO: Detect ASIC4
-// TODO: Force ASIC5 mode
 // TODO: MD5 error checking
 // ? If Port D is set, what happens to Port C?
 // ?  - Is it reset to 0?
@@ -70,17 +68,17 @@ void loop() {
    switch (incomingCharacter) {
      case '4':
       force_asic5 = false;
-      Serial.print("4OK");
+      // Serial.print("4OK");
       break;
 
      case '5':
       force_asic5 = true;
-      Serial.print("5OK");
+      // Serial.print("5OK");
       break;
 
      case 'a':
      case 'A':
-      Serial.print(is_asic4 ? 4 : 5);
+      Serial.write(is_asic4 ? 4 : 5);
       break;
 
      case 'b':
@@ -205,7 +203,7 @@ void DeselectASIC() {
 }
 
 byte ReadByte(unsigned long address) {
-  SetAddress5(address);
+  SetAddress(address);
   _Control(SP_SCTL_READ_SINGLE_BYTE | 0b0000);
   return _DataI();
 }
@@ -251,7 +249,7 @@ bool SelectASIC5() {
   return (ssdinfo.infobyte > 0);
 }
 
-void SetAddress5(unsigned long address) {
+void _SetAddress5(unsigned long address) {
   byte a0 = address & 0xFF;
   byte a1 = (address >> 8) & 0xFF; 
   byte a2 = ((address >> 16) & 0b00011111) | ((curdev << 6) & 0b11000000);
@@ -266,24 +264,24 @@ void SetAddress5(unsigned long address) {
   _DataO(a0);
 }
 
-void SetAddress4(unsigned long address) {
+void _SetAddress4(unsigned long address) {
   byte a0 = address & 0xFF;
-  byte a1 = (address >> 8) & 0xFF; 
-  byte a2 = (address >> 16) & 0xFF; 
-  byte a3 = ((address >> 24) & 0b00001111) | ((curdev << 4) & 0b00110000 | 0b01000000);
+  byte a1 = (address >> 8) & 0xFF;
+  byte a2 = (address >> 16) & 0xFF;
+  byte a3 = ((address >> 24) & 0b00001111) | ((curdev << 4) & 0b00110000); // | 0b01000000);
 
   _Control(SP_SCTL_WRITE_MULTI_BYTE | 0b0011); 
   _DataO(a0);
-  if (address & 0xFFFFFF00 != 0) _DataO(a1);
-  if (address & 0xFFFF0000 != 0) _DataO(a2);
-  if (address & 0xFF000000 != 0) _DataO(a3);
+  if (address >> 8 != 0) _DataO(a1);
+  if (address >> 16 != 0) _DataO(a2);
+  if (address >> 24 != 0) _DataO(a3);
   }
 
 void SetAddress(unsigned long address) {
   if (is_asic4 && !force_asic5) {
-    SetAddress4(address);
+    _SetAddress4(address);
   } else {
-    SetAddress5(address);
+    _SetAddress5(address);
   }
 }
 
