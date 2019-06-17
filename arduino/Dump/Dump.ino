@@ -7,7 +7,7 @@
 
 #define DATA 3
 #define CLOCK 2
-#define CYCLE 20
+#define CYCLE 5
 
 #define SP_SCTL_READ_MULTI_BYTE   0b11010000
 #define SP_SCTL_READ_SINGLE_BYTE  0b11000000
@@ -36,7 +36,7 @@ bool force_asic5 = true;
 void dump(int _blocks) {
   SetMode(0);
   for (int _block = 0; _block < _blocks; _block++) {
-    SetAddress(((long)_block << 8));
+    SetAddress(((unsigned long)_block << 8));
     _Control(SP_SCTL_READ_MULTI_BYTE | 0b0000);
     for (int b = 0; b < 256; b++) {
       Serial.write(_DataI());
@@ -45,9 +45,9 @@ void dump(int _blocks) {
 }
 
 void dumpblock(int _block) {
-  SetMode(0);
-  SetAddress(((long)_block << 8));
-  _Control(0b11010000);
+  if (!is_asic4 || force_asic5) SetMode(0);
+  SetAddress(((unsigned long)_block << 8));
+  _Control(SP_SCTL_READ_MULTI_BYTE | 0b0000);
   for (int b = 0; b < 256; b++) {
     Serial.write(_DataI());
   }
@@ -121,9 +121,8 @@ void loop() {
 
 void printinfo() {
   long unsigned int blocks;
-  // if (is_asic4) {
-  //   Serial.println("ASIC4 detected.");
-  // }
+
+  Serial.println();
   Serial.print("TYPE: ");
   switch (ssdinfo.type) {
     case 0:
@@ -219,14 +218,12 @@ void Reset() {
   curdev = 0;
   _Control(0b00000000);
   is_asic4 = SelectASIC4();
-  // ssdinfo.asic4inputreg = is_asic4 ? GetASIC4InputRegister() : 0;
-  // ssdinfo.asic4devsizereg = is_asic4 ? GetASIC4DevSizeRegister() : 0;
   if (!is_asic4 || force_asic5) SelectASIC5();
 }
 
 bool SelectASIC4() {
   _Control(SP_SSEL | ID_ASIC4);
-  GetSSDInfo();
+  _GetSSDInfo();
 
   if (ssdinfo.infobyte > 0) {
     ssdinfo.asic4inputreg = GetASIC4InputRegister();
@@ -244,7 +241,7 @@ bool SelectASIC5() {
   ssdinfo.asic4devsizereg = 0;
 
   _Control(SP_SSEL | ID_ASIC5);
-  GetSSDInfo();
+  _GetSSDInfo();
 
   return (ssdinfo.infobyte > 0);
 }
@@ -339,7 +336,7 @@ byte _DataI() {
   return input;
 }
 
-void GetSSDInfo() {
+void _GetSSDInfo() {
   ssdinfo.infobyte = _DataI();
 
   ssdinfo.type   = (ssdinfo.infobyte & 0b11100000) >> 5;
