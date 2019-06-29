@@ -1,5 +1,4 @@
 // TODO: Device selection
-// TODO: Force ASIC5 mode
 // TODO: MD5 error checking
 // TODO: Timeout for reads and counting of bytes
 
@@ -341,17 +340,17 @@ int main (int argc, const char **argv) {
     unsigned char block[256];
     unsigned char curdev;
     int firstblockonly = 0;
-    int force_asic5 = 0;
+    int allow_asic4 = 0;
     FILE *fp;
     int wlen;
-    // unsigned int address;
+    unsigned int address;
 
     struct argparse_option options[] = {
         OPT_HELP(),
         OPT_STRING('s', "serial", &sd.device, "set serial device of arduino"),
         OPT_STRING('d', "dump", &dumppath, "dump to file"),
         OPT_BOOLEAN('f', "firstblockonly", &firstblockonly, "only pull the first block (256 characters)"),
-        OPT_BOOLEAN('5', "forceasic5", &force_asic5, "Force ASIC5 mode, even if the SSD has an ASIC4."),
+        OPT_BOOLEAN('4', "asic4", &allow_asic4, "Allow native ASIC4 mode for compatible SSDs (EXPERIMENTAL)"),
         // OPT_INTEGER('a', "address", &address, "Start address."),
         OPT_END(),
     };
@@ -365,7 +364,7 @@ int main (int argc, const char **argv) {
     usleep(2000000);
     portflush(&sd);
 
-    if (force_asic5 != 0) {
+    if (allow_asic4 == 0) {
         printf("FORCING ASIC5!\n");
 
         wlen = portsend(&sd, '5');
@@ -448,7 +447,7 @@ int main (int argc, const char **argv) {
         //         exit(-1);
         //     }
 
-        }
+        // }
 
         for (curdev = 0; curdev < ssdinfo.devs; curdev++) {
             for (i = 0; i < ssdinfo.blocks; i++) {
