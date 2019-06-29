@@ -7,7 +7,7 @@
 
 #define DATA 3
 #define CLOCK 2
-#define CYCLE 5
+#define CYCLE 2
 
 #define SP_SCTL_READ_MULTI_BYTE   0b11010000
 #define SP_SCTL_READ_SINGLE_BYTE  0b11000000
@@ -99,6 +99,10 @@ void loop() {
      case 'f':
       dumpblock(curblock);
       break;
+
+    //  case 'j': //jump to an address
+    //   getstartaddress();
+    //   break;
       
      case 'n':
       curblock++ % (ssdinfo.blocks + 1);
@@ -269,16 +273,42 @@ void _SetAddress4(unsigned long address) {
 
   _Control(SP_SCTL_WRITE_MULTI_BYTE | 0b0011); 
   _DataO(a0);
-  if (address >> 8 != 0) _DataO(a1);
+  _DataO(a1);
+  // if (address >> 8 != 0) _DataO(a1);
   if (address >> 16 != 0) _DataO(a2);
   if (address >> 24 != 0) _DataO(a3);
-  }
+}
 
 void SetAddress(unsigned long address) {
   if (is_asic4 && !force_asic5) {
     _SetAddress4(address);
   } else {
     _SetAddress5(address);
+  }
+}
+
+// Wait for address to be set
+void getstartaddress() {
+  int i = 0;
+  unsigned long address;
+
+  while (i < 4) {
+    Serial.print("?");
+    while (Serial.available() > 0) {
+      char incomingCharacter = Serial.read();
+      address = (long) incomingCharacter << (i * 8) | address;       
+      i++;
+      if (i == 4) {
+        break;
+      }
+    }
+  }
+  if (address > ssdinfo.size * 1024) {
+    Serial.print('z');
+    address = 0;
+  } else {
+    Serial.print('!');
+    SetAddress(address);
   }
 }
 

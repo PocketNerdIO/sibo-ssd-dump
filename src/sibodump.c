@@ -344,6 +344,7 @@ int main (int argc, const char **argv) {
     int force_asic5 = 0;
     FILE *fp;
     int wlen;
+    // unsigned int address;
 
     struct argparse_option options[] = {
         OPT_HELP(),
@@ -351,6 +352,7 @@ int main (int argc, const char **argv) {
         OPT_STRING('d', "dump", &dumppath, "dump to file"),
         OPT_BOOLEAN('f', "firstblockonly", &firstblockonly, "only pull the first block (256 characters)"),
         OPT_BOOLEAN('5', "forceasic5", &force_asic5, "Force ASIC5 mode, even if the SSD has an ASIC4."),
+        // OPT_INTEGER('a', "address", &address, "Start address."),
         OPT_END(),
     };
     struct argparse argparse;
@@ -398,6 +400,7 @@ int main (int argc, const char **argv) {
     }
     ssdinfo.asic = buffer;
 
+
     // printf("%x\n", buffer);
     GetSSDInfo(buffer);
     printinfo();
@@ -412,6 +415,40 @@ int main (int argc, const char **argv) {
             ssdinfo.blocks = 1;
         }
         printf("SSDINFO DEVS/BLOCKS = %d/%d\n", ssdinfo.devs, ssdinfo.blocks);
+
+        // If provided, set the address
+        // if (address != 0) {
+        //     printf("Setting address to 0x%06x (%d)\n", address, address);
+
+        //     wlen = portsend(&sd, 'j');
+        //     if (wlen != 1) {
+        //         printf("Error from write: %d, %d\n", wlen, errno);
+        //     }
+        //     wlen = portread(&sd, &buffer);
+        //     if (wlen != 1) {
+        //         printf("Error from read: %d, %d\n", wlen, errno);
+        //     }
+        //     if (buffer == '?') {
+        //         // Send 4 bytes, LSB first
+        //         for (i =0; i < 4; i++) {
+        //             wlen = portsend(&sd, (address >> (i * 8)) | 0xFF);
+        //         }
+        //         if (wlen != 1) {
+        //             printf("Error from write: %d, %d\n", wlen, errno);
+        //         }
+        //     }
+
+        //     // Wait for OK
+        //     wlen = portread(&sd, &buffer);
+        //     if (wlen != 1) {
+        //         printf("Error from read: %d, %d\n", wlen, errno);
+        //     }
+        //     if (buffer != '!') {
+        //         printf("Arduino didn't like the address.\n");
+        //         exit(-1);
+        //     }
+
+        }
 
         for (curdev = 0; curdev < ssdinfo.devs; curdev++) {
             for (i = 0; i < ssdinfo.blocks; i++) {
