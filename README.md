@@ -2,9 +2,9 @@
 
 This is the SIBO SSD Dumper.
 
-The project has two parts. This is a tool of two parts: an Arduino sketch which talks to the SSD using SIBO-SP, and a C app that controls the Arduino over serial and will dump what it receives to a file.
+This is a tool of two parts: an Arduino sketch which talks to the SSD using SIBO-SP, and a companion app written in C that controls the Arduino over serial and will dump what it receives to a file.
 
-The app runs on Win32 and Win64, Linux and macOS. It should run on *BSD, but I haven't tested it yet. You'll also find some binaries for Win32, Win64 and macOS in the repository.
+The app runs on Win32 and Win64, Linux and macOS. It should run on *BSD, but I've only tried OpenBSD. You'll also find some binaries for Win32, Win64 and macOS in the repository.
 
 With pin 1 on the SSD being closest to its edge, connect the SSD to your Arduino as follows:
 
@@ -15,9 +15,9 @@ With pin 1 on the SSD being closest to its edge, connect the SSD to your Arduino
 
 SSD pins 3 and 4 aren't needed for this.
 
-If you don't want to use the companion app and want to see the raw data coming through, you can use the Arduino sketch by itself with an app like RealTerm on Windows. Connect RealTerm to your Arduino's serial device, set RealTerm to 57600 baud, start the capture and send "d" to the Arduino. The dump will start immediately.
+If you don't want to use the companion app and want to see the raw data coming through, you can use the Arduino sketch by itself with an app like RealTerm on Windows. Connect RealTerm to your Arduino's serial device, set RealTerm to 115200 baud, start the capture (input only) and send "d" to the Arduino. The dump will start immediately.
 
-As with siboimg, this is ALPHA-QUALITY SOFTWARE. The Arduino sketch is reliable, although it doesn't currently handle SSDs with more than one "device" (chip). So, for example, my 4MB Flash II SSD is made up of 4x 1MB flash chips, so sibodump will stop after the first 1MB. The companion app is missing a lot of error checking at the moment, but that will come in the future.
+As with siboimg, this is ALPHA-QUALITY SOFTWARE. The Arduino sketch is reliable, although it struggles with talking to ASIC4-based SSDs in native ASIC4 mode (the default is ASIC5 mode, which is reliable and fine because ASIC4 can talk ASIC5). Both the companion app and the sketch are missing a lot of error checking at the moment, but that will come in the future.
 
 The Arduino sketch was originally written by Karl with new features such as the command interpreter and block-by-block dumping added by me. The companion app is written by me with the addition of argparse.
 

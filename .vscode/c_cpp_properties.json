@@ -1,0 +1,35 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "/home/alex/.arduino15/packages/arduino/tools/**",
+                "/home/alex/.arduino15/packages/arduino/hardware/avr/1.6.23/**"
+            ],
+            "forcedInclude": [
+                "/home/alex/.arduino15/packages/arduino/hardware/avr/1.6.23/cores/arduino/Arduino.h"
+            ],
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/bin/clang",
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        },
+        {
+            "name": "MINGW32",
+            "includePath": [
+                "/home/alex/.arduino15/packages/arduino/tools/**",
+                "/home/alex/.arduino15/packages/arduino/hardware/avr/1.6.23/**",
+                "/usr/i686-w64-mingw32/include/**"
+            ],
+            "forcedInclude": [
+                "/home/alex/.arduino15/packages/arduino/hardware/avr/1.6.23/cores/arduino/Arduino.h"
+            ],
+            "intelliSenseMode": "clang-x64",
+            "compilerPath": "/bin/clang",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "defines": ["_WIN32"]
+        }
+    ],
+    "version": 4
+}

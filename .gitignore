@@ -50,3 +50,10 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+sibodump
+*.rom
+*.zip
+.vscode/arduino.json
+.vscode/settings.json
+bin/
