@@ -225,6 +225,16 @@ void Reset() {
   if (!is_asic4 || force_asic5) SelectASIC5();
 }
 
+byte GetASIC4InputRegister() {
+  _Control(SP_SCTL_READ_SINGLE_BYTE | 0b0001); // Register 1
+  return _DataI();
+}
+
+byte GetASIC4DevSizeRegister() {
+  _Control(SP_SCTL_WRITE_SINGLE_BYTE | 0b0001); // Register 1
+  return _DataI();
+}
+
 bool SelectASIC4() {
   _Control(SP_SSEL | ID_ASIC4);
   _GetSSDInfo();
@@ -287,30 +297,31 @@ void SetAddress(unsigned long address) {
   }
 }
 
-// Wait for address to be set
-void getstartaddress() {
-  int i = 0;
-  unsigned long address;
 
-  while (i < 4) {
-    Serial.print("?");
-    while (Serial.available() > 0) {
-      char incomingCharacter = Serial.read();
-      address = (long) incomingCharacter << (i * 8) | address;       
-      i++;
-      if (i == 4) {
-        break;
-      }
-    }
-  }
-  if (address > ssdinfo.size * 1024) {
-    Serial.print('z');
-    address = 0;
-  } else {
-    Serial.print('!');
-    SetAddress(address);
-  }
-}
+// void getstartaddress() {
+//   int i = 0;
+//   unsigned long address;
+
+//   while (i < 4) {
+//     Serial.print("?");
+//     while (Serial.available() > 0) {
+//       char incomingCharacter = Serial.read();
+//       address = (long) incomingCharacter << (i * 8) | address;       
+//       i++;
+//       if (i == 4) {
+//         break;
+//       }
+//     }
+//   }
+//   if (address > ssdinfo.size * 1024) {
+//     Serial.print('z');
+//     address = 0;
+//   } else {
+//     Serial.print('!');
+//     SetAddress(address);
+//   }
+// }
+
 
 void SetMode(byte mode) {
   // changed from 0b10100010
@@ -319,12 +330,9 @@ void SetMode(byte mode) {
 }
 
 void _Control(byte data) {
-  pinMode(DATA, OUTPUT);
-  digitalWrite(DATA, HIGH);
-  _Cycle(1);
-  digitalWrite(DATA, LOW);
-  _Cycle(2);
+  _SendCtrlHeader();
   
+  pinMode(DATA, OUTPUT);
   for (byte _dx = 0; _dx < 8; _dx++) {
     digitalWrite(DATA, ((data & (0b00000001 << _dx)) == 0) ? LOW : HIGH);
     _Cycle(1);
@@ -338,33 +346,75 @@ void _Control(byte data) {
 
 void _Cycle(byte cycles) {
   for (byte _cx = 0; _cx < cycles; _cx++) {
-    delayMicroseconds(CYCLE / 5);
     digitalWrite(CLOCK, HIGH);
-    delayMicroseconds(CYCLE);
     digitalWrite(CLOCK, LOW);
-    delayMicroseconds(CYCLE - (CYCLE / 5));
   }
 }
 
-byte _DataI() {
+void _SendBitAndLatch(uint8_t state) {
+  digitalWrite(DATA, state);
+  _Cycle(1);
+}
+
+
+// _SendIdleBit()
+// Tristates the pin by setting it to INPUT to comply with Psion standards,
+// then sends a clock pulse
+void _SendIdleBit() {
+  digitalWrite(DATA, LOW); 
+  pinMode(DATA, INPUT);
+  _Cycle(1);
+}
+
+// _SendDataHeader()
+// Send start bit, high Select bit, then the idle bit
+void _SendDataHeader() {
   pinMode(DATA, OUTPUT);
   digitalWrite(DATA, HIGH);
   _Cycle(2);
-  pinMode(DATA, INPUT);
+  _SendIdleBit();
+}
+
+// _SendCtrlHeader()
+// Send start bit, low Select bit, then the idle bit
+void _SendCtrlHeader() {
+  pinMode(DATA, OUTPUT);
+  digitalWrite(DATA, HIGH);
   _Cycle(1);
-  
+  digitalWrite(DATA, LOW);
+  _Cycle(1);
+  _SendIdleBit();
+}
+
+byte _DataI() {
   byte input = 0;
+
+  _SendDataHeader();
+  pinMode(DATA, INPUT);
+  
   for (byte _dx = 0; _dx < 8; _dx++) {
     digitalWrite(CLOCK, HIGH);
-    delayMicroseconds(CYCLE / 5);
     input = input | (digitalRead(DATA) << _dx);
-    delayMicroseconds(CYCLE - (CYCLE /5));
     digitalWrite(CLOCK, LOW);
-    delayMicroseconds(CYCLE);
   }
-  _Cycle(1);
+
+  _SendIdleBit();
   return input;
 }
+
+void _DataO(byte data) { 
+  _SendDataHeader();
+  pinMode(DATA, OUTPUT);
+  
+  for (byte _dx = 0; _dx < 8; _dx++) {
+    digitalWrite(DATA, ((data & (0b00000001 << _dx)) == 0) ? LOW : HIGH);
+    digitalWrite(CLOCK, HIGH);
+    digitalWrite(CLOCK, LOW);
+  }
+  
+  _SendIdleBit();
+}
+
 
 void _GetSSDInfo() {
   ssdinfo.infobyte = _DataI();
@@ -375,35 +425,8 @@ void _GetSSDInfo() {
   ssdinfo.blocks = (ssdinfo.size == 0) ? 0 : ((0b10000 << ssdinfo.size) * 4);
 }
 
-void _DataO(byte data) { 
-  pinMode(DATA, OUTPUT);
-  digitalWrite(DATA, HIGH);
-  _Cycle(2);
-  digitalWrite(DATA, LOW);
-  _Cycle(1);
-  
-  for (byte _dx = 0; _dx < 8; _dx++) {
-    digitalWrite(DATA, ((data & (0b00000001 << _dx)) == 0) ? LOW : HIGH);
-    _Cycle(1);
-  }
-  
-  digitalWrite(DATA, LOW);
-  _Cycle(1);
-  
-  pinMode(DATA, INPUT);
-}
 
 void _Null() {
   pinMode(DATA, INPUT);
   _Cycle(12);
-}
-
-byte GetASIC4InputRegister() {
-  _Control(SP_SCTL_READ_SINGLE_BYTE | 0b0001); // Register 1
-  return _DataI();
-}
-
-byte GetASIC4DevSizeRegister() {
-  _Control(SP_SCTL_WRITE_SINGLE_BYTE | 0b0001); // Register 1
-  return _DataI();
 }
