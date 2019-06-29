@@ -7,7 +7,7 @@
 
 #define DATA 3
 #define CLOCK 2
-#define CYCLE 2
+#define BAUDRATE 115200
 
 #define SP_SCTL_READ_MULTI_BYTE   0b11010000
 #define SP_SCTL_READ_SINGLE_BYTE  0b11000000
@@ -54,7 +54,7 @@ void dumpblock(int _block) {
 }
 
 void setup() {
-  Serial.begin(57600);
+  Serial.begin(BAUDRATE);
   pinMode(CLOCK, OUTPUT);
   pinMode(DATA, INPUT);
   digitalWrite(CLOCK, LOW);

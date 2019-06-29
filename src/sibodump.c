@@ -18,6 +18,7 @@
 
     #define B9600   CBR_9600
     #define B57600  CBR_57600
+    #define B115200  CBR_115200
 #else
     // Assume it's something POSIX-compliant
     #include <unistd.h>
@@ -25,7 +26,7 @@
     const char *slash = "/";
 #endif
 
-#define BAUDRATE B57600 
+#define BAUDRATE B115200
 
 #include "argparse/argparse.h"
 static const char *const usage[] = {
