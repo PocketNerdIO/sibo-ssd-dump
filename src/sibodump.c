@@ -399,10 +399,6 @@ int main (int argc, const char **argv) {
         printf("Error from read: %d, %d\n", wlen, errno);
     }
     ssdinfo.asic = buffer;
-
-
-    // printf("%x\n", buffer);
-    GetSSDInfo(buffer);
     printinfo();
 
     if (dumppath != NULL) {
