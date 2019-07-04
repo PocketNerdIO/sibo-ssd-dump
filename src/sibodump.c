@@ -1,28 +1,29 @@
 // TODO: Device selection
 // TODO: MD5 error checking
 // TODO: Timeout for reads and counting of bytes
+// TODO: Check serial port/device exists
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-// #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+
 #include "statwrap.h"
+#include "serialwrap.h"
 
 #ifdef _WIN32
     #include <windows.h>
-    #include <tchar.h>
+    // #include <tchar.h>
     const char *slash = "\\";
 
-    #define B9600   CBR_9600
-    #define B57600  CBR_57600
-    #define B115200  CBR_115200
+    void usleep(int us) {
+        Sleep(us/1000);
+    }
 #else
     // Assume it's something POSIX-compliant
     #include <unistd.h>
-    #include <termios.h>
     const char *slash = "/";
 #endif
 
@@ -43,181 +44,6 @@ struct {
     unsigned int  blocks;
     unsigned char asic;
 } ssdinfo;
-
-#ifdef _WIN32
-typedef struct {
-    HANDLE portHandle;
-    const char *device;
-} SerialDevice;
-#else
-typedef struct {
-    int fd;
-    const char *device;
-    struct termios tty;
-} SerialDevice;
-#endif
-
-#ifdef _WIN32
-void usleep(int us) {
-    Sleep(us/1000);
-}
-#endif
-
-
-//
-// Serial Port Configuration
-//
-#ifdef _WIN32
-
-void PrintCommState(DCB dcb) {
-    //  Print some of the DCB structure values
-    _tprintf( TEXT("BaudRate = %ld, ByteSize = %d, Parity = %d, StopBits = %d\n"), 
-              dcb.BaudRate, 
-              dcb.ByteSize, 
-              dcb.Parity,
-              dcb.StopBits );
-}
-
-int portopen(SerialDevice *sd) {
-    sd->portHandle = CreateFile(sd->device, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-    if (sd->portHandle == INVALID_HANDLE_VALUE) {
-        fputs("Unable to open serial port", stderr);
-        // printf("Error opening serial port %s\n", sd->device);
-        sd->portHandle = NULL;
-        return 0;
-    }
-    // printf("%lld\n", sd->portHandle);
-    return 0;
-}
-
-int portcfg(SerialDevice *sd, int speed) {
-    BOOL Success;
-    DCB dcb;
-    COMMTIMEOUTS timeouts = { 0 };
-
-    dcb.DCBlength = sizeof(dcb);
-    Success = GetCommState(sd->portHandle, &dcb);
-    if (!Success) {
-        printf("GetCommState failed with error %ld.\n", GetLastError());
-        return 2;
-    }
-    // PrintCommState(dcb);
-
-    dcb.BaudRate = speed; // TODO: Test alternative methods
-    dcb.ByteSize = 8;
-    dcb.StopBits = ONESTOPBIT;
-    dcb.Parity   = NOPARITY;
-    dcb.fRtsControl = RTS_CONTROL_DISABLE;
-    dcb.fOutxCtsFlow = FALSE;
-    dcb.fOutX = FALSE;
-    dcb.fInX = FALSE;
-    
-    timeouts.ReadIntervalTimeout         = 50; // in milliseconds
-    timeouts.ReadTotalTimeoutConstant    = 50; // in milliseconds
-    timeouts.ReadTotalTimeoutMultiplier  = 10; // in milliseconds
-    timeouts.WriteTotalTimeoutConstant   = 50; // in milliseconds
-    timeouts.WriteTotalTimeoutMultiplier = 10; // in milliseconds
-
-    // PrintCommState(dcb);
-
-    Success = SetCommState(sd->portHandle, &dcb);
-    if (!Success) {
-        printf("SetCommState failed with error %ld.\n", GetLastError());
-        return 1;
-    }
-    Success = GetCommState(sd->portHandle, &dcb);
-    if (!Success) {
-        printf("Second GetCommState failed with error %ld.\n", GetLastError());
-        return 3;
-    }
-    // PrintCommState(dcb);
-
-
-    Success = SetCommTimeouts(sd->portHandle, &timeouts);
-    return 0;
-}
-
-int portsend(SerialDevice *sd, char buffer) {
-    DWORD count;
-    // printf("Trying to send '%s' (%x)...\n", &buffer, buffer);
-    WriteFile(sd->portHandle, &buffer, 1, &count, NULL);
-    return (int) count;
-}
-
-int portread(SerialDevice *sd, unsigned char *buffer) {
-    DWORD count;
-    ReadFile(sd->portHandle, buffer, 1, &count, NULL);
-    return (int) count;
-}
-
-int portflush(SerialDevice *sd) {
-    return PurgeComm(sd->portHandle, PURGE_RXCLEAR | PURGE_TXCLEAR);
-}
-
-int portclose(SerialDevice *sd) {
-    return CloseHandle(sd->portHandle);
-}
-
-#else
-
-int portopen(SerialDevice *sd) {
-    sd->fd = open(sd->device, O_RDWR | O_NOCTTY);
-    if (sd->fd < 0) {
-        perror(sd->device);
-        exit(-1);
-    }
-    return 0;
-}
-
-int portcfg(SerialDevice *sd, int speed) {
-    struct termios tty;
-
-    if (tcgetattr(sd->fd, &tty) < 0) {
-        printf("Error from tcgetattr: %s\n", strerror(errno));
-        return -1;
-    }
-
-    cfsetospeed(&tty, (speed_t)speed);
-    cfsetispeed(&tty, (speed_t)speed);
-
-    tty.c_cflag |= (CLOCAL | CREAD);    /* ignore modem controls */
-    tty.c_cflag &= ~CSIZE;
-    tty.c_cflag |= CS8;         /* 8-bit characters */
-    tty.c_cflag &= ~PARENB;     /* no parity bit */
-    tty.c_cflag &= ~CSTOPB;     /* only need 1 stop bit */
-    tty.c_cflag &= ~CRTSCTS;    /* no hardware flowcontrol */
-
-    tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
-    tty.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-    tty.c_oflag &= ~OPOST;
-
-    tty.c_cc[VMIN] = 1;
-    tty.c_cc[VTIME] = 1;
-
-    if (tcsetattr(sd->fd, TCSANOW, &tty) != 0) {
-        printf("Error from tcsetattr: %s\n", strerror(errno));
-        return -1;
-    }
-    return 0;
-}
-
-int portsend(SerialDevice *sd, char buffer) {
-    return write(sd->fd, &buffer, 1);
-}
-
-int portread(SerialDevice *sd, unsigned char *buffer) {
-    return read(sd->fd, buffer, 1);
-}
-
-int portflush(SerialDevice *sd) {
-    return tcflush(sd->fd, TCIFLUSH);
-}
-
-int portclose(SerialDevice *sd) {
-    return close(sd->fd);
-}
-
-#endif
 
 
 void GetSSDInfo(char input) {
@@ -346,6 +172,11 @@ int main (int argc, const char **argv) {
     int wlen;
     unsigned int address;
 
+    // Introducing...
+    printf("SIBODUMP: Psion SSD extraction tool\n");
+    printf("(c)2019 The Last Psion Project\n\n");
+
+    // Set up ARGPARSE
     struct argparse_option options[] = {
         OPT_HELP(),
         OPT_STRING('s', "serial", &sd.device, "set serial device of arduino"),
@@ -360,24 +191,15 @@ int main (int argc, const char **argv) {
     argparse_describe(&argparse, "\nDumps SIBO SSD images to file.", "");
     argc = argparse_parse(&argparse, argc, argv);
 
+    // Configure serial
     portopen(&sd);
-    portcfg(&sd, B57600);
-    usleep(2000000);
+    portcfg(&sd, BAUDRATE);
+    usleep(2000000); // wait for 2 seconds
     portflush(&sd);
 
-    if (allow_asic4 == 0) {
-        printf("FORCING ASIC5!\n");
 
-        wlen = portsend(&sd, '5');
-    } else {
-        printf("ALLOWING ASIC4!\n");
-        wlen = portsend(&sd, '4');
-    }
-    if (wlen != 1) {
-        printf("Error from write: %d, %d\n", wlen, errno);
-    }
-
-    wlen = portsend(&sd, 'b');
+    // Get infobyte
+    wlen = portsend(&sd, 'b'); 
     if (wlen != 1) {
         printf("Error from write: %d, %d\n", wlen, errno);
     }
@@ -389,7 +211,8 @@ int main (int argc, const char **argv) {
 
     GetSSDInfo(buffer);
 
-    wlen = portsend(&sd, 'a');
+    // Get ASIC detected
+    wlen = portsend(&sd, 'a'); 
     if (wlen != 1) {
         printf("Error from write: %d, %d\n", wlen, errno);
     }
@@ -400,13 +223,23 @@ int main (int argc, const char **argv) {
     }
     ssdinfo.asic = buffer;
 
-
-    // printf("%x\n", buffer);
-    GetSSDInfo(buffer);
     printinfo();
 
+
     if (dumppath != NULL) {
+        // Force ASIC4 (ID:6) (if it matters)
+        if (allow_asic4 == 0) {
+            printf("Forcing ASIC5 Pack Mode (ID:2)\n");
+        } else {
+            printf("Allowing ASIC4 Native Mode (ID:6)\n");
+        }
+        wlen = portsend(&sd, allow_asic4 == 0 ? '5' : '4');
+        if (wlen != 1) {
+            printf("Error from write: %d, %d\n", wlen, errno);
+        }
+
         printf("\n");
+
         portsend(&sd, 'R');
         fp = fopen(dumppath, "wb");
 
