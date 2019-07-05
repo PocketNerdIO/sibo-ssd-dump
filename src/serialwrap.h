@@ -10,12 +10,14 @@
 #ifdef _WIN32
     #include <windows.h>
     #include <tchar.h>
-    #define B9600    CBR_9600
-    #define B57600   CBR_57600
-    #define B115200  CBR_115200
+    #define B9600     CBR_9600
+    #define B57600    CBR_57600
+    #define B115200   CBR_115200
+    #define B2000000  2000000
 #else
     #include <unistd.h>
     #include <termios.h>
+    #include <sys/stat.h>
 #endif
 
 

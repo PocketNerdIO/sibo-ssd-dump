@@ -28,6 +28,7 @@
 #endif
 
 #define BAUDRATE B115200
+// #define BAUDRATE B2000000
 
 #include "argparse/argparse.h"
 static const char *const usage[] = {
@@ -192,7 +193,10 @@ int main (int argc, const char **argv) {
     argc = argparse_parse(&argparse, argc, argv);
 
     // Configure serial
-    portopen(&sd);
+    if (portopen(&sd) != 0) {
+        printf("Couldn't find serial device.\n");
+        exit(-1);
+    };
     portcfg(&sd, BAUDRATE);
     usleep(2000000); // wait for 2 seconds
     portflush(&sd);

@@ -6,18 +6,28 @@
 int portopen(SerialDevice *sd) {
     sd->portHandle = CreateFile(sd->device, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
     if (sd->portHandle == INVALID_HANDLE_VALUE) {
-        fputs("Unable to open serial port", stderr);
+        fputs("Unable to open serial port: ", stderr);
         // printf("Error opening serial port %s\n", sd->device);
         sd->portHandle = NULL;
-        return 0;
+        return 2;
+    // } else if (sd->portHandle == ERROR_FILE_NOT_FOUND) {
+    //     fputs("Could not find serial port", stderr);
+    //     sd->portHandle = NULL;
+    //     return 1;
     }
-    // printf("%lld\n", sd->portHandle);
     return 0;
 }
 
 #else
 
 int portopen(SerialDevice *sd) {
+    // Does the device exist?
+    struct stat path_stat;
+    if (stat(sd->device , &path_stat) != 0) {
+        perror(sd->device);
+        return 1;
+    }
+
     sd->fd = open(sd->device, O_RDWR | O_NOCTTY);
     if (sd->fd < 0) {
         perror(sd->device);
