@@ -1,6 +1,6 @@
 // TODO: Device selection
 // TODO: MD5 error checking
-// TODO: Timeout for reads and counting of bytes
+// TODO: Timeout for serial reads and counting of bytes
 // TODO: Check serial port/device exists
 
 #include <stdio.h>
@@ -169,6 +169,7 @@ int main (int argc, const char **argv) {
     unsigned char curdev;
     int firstblockonly = 0;
     int allow_asic4 = 0;
+    int direct_pin_mode = 0;
     FILE *fp;
     int wlen;
     unsigned int address;
@@ -184,6 +185,7 @@ int main (int argc, const char **argv) {
         OPT_STRING('d', "dump", &dumppath, "dump to file"),
         OPT_BOOLEAN('f', "firstblockonly", &firstblockonly, "only pull the first block (256 characters)"),
         OPT_BOOLEAN('4', "asic4", &allow_asic4, "Allow native ASIC4 mode for compatible SSDs (EXPERIMENTAL)"),
+        OPT_BOOLEAN('p', "directpinmode", &direct_pin_mode, "Use Arduino pins directly instead of pinMode() et al"),
         // OPT_INTEGER('a', "address", &address, "Start address."),
         OPT_END(),
     };
@@ -238,6 +240,16 @@ int main (int argc, const char **argv) {
             printf("Allowing ASIC4 Native Mode (ID:6)\n");
         }
         wlen = portsend(&sd, allow_asic4 == 0 ? '5' : '4');
+        if (wlen != 1) {
+            printf("Error from write: %d, %d\n", wlen, errno);
+        }
+
+        if (direct_pin_mode == 0) {
+            printf("Using pinMode() libraries.\n");
+        } else {
+            printf("Using direct pin mode.\n");
+        }
+        wlen = portsend(&sd, direct_pin_mode == 0 ? 'p' : 'P');
         if (wlen != 1) {
             printf("Error from write: %d, %d\n", wlen, errno);
         }

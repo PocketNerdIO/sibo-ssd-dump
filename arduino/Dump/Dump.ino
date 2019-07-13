@@ -5,60 +5,40 @@
 // ?  - Are just the first 5 bits reset, so the device (CS) is the same?
 // ?  - Is it untouched?
 
-#define DATA 3
-#define CLOCK 2
+#include "Physical.h"
+
 #define BAUDRATE 115200
-
-#define SP_SCTL_READ_MULTI_BYTE   0b11010000
-#define SP_SCTL_READ_SINGLE_BYTE  0b11000000
-#define SP_SCTL_WRITE_MULTI_BYTE  0b10010000
-#define SP_SCTL_WRITE_SINGLE_BYTE 0b10000000
-#define SP_SSEL                   0b01000000
-
-#define ID_ASIC4 6
-#define ID_ASIC5 2
-
-struct {
-  byte infobyte;
-  byte type;
-  byte devs;
-  byte size;
-  int  blocks;
-  byte asic4inputreg;
-  byte asic4devsizereg;
-} ssdinfo;
 
 unsigned int curblock = 0;
 byte curdev = 0;
 bool is_asic4 = false;
-bool force_asic5 = true;
+bool direct_pin_mode = false;
+
+SIBOSPConnection sibosp;
+
 
 void dump(int _blocks) {
   SetMode(0);
   for (int _block = 0; _block < _blocks; _block++) {
-    SetAddress(((unsigned long)_block << 8));
-    _Control(SP_SCTL_READ_MULTI_BYTE | 0b0000);
+    sibosp.setAddress(((unsigned long)_block << 8));
+    sibosp.sendControlFrame(SP_SCTL_READ_MULTI_BYTE | 0);
     for (int b = 0; b < 256; b++) {
-      Serial.write(_DataI());
+      Serial.write(sibosp.fetchDataFrame());
     }
   }
 }
 
 void dumpblock(int _block) {
-  if (!is_asic4 || force_asic5) SetMode(0);
-  SetAddress(((unsigned long)_block << 8));
-  _Control(SP_SCTL_READ_MULTI_BYTE | 0b0000);
+  if (sibosp.getID() == ID_ASIC5 || sibosp.getForceASIC5()) SetMode(0);
+  sibosp.setAddress(((unsigned long)_block << 8));
+  sibosp.sendControlFrame(SP_SCTL_READ_MULTI_BYTE | 0);
   for (int b = 0; b < 256; b++) {
-    Serial.write(_DataI());
+    Serial.write(sibosp.fetchDataFrame());
   }
 }
 
 void setup() {
   Serial.begin(BAUDRATE);
-  pinMode(CLOCK, OUTPUT);
-  pinMode(DATA, INPUT);
-  digitalWrite(CLOCK, LOW);
-  
   Reset();
 }
 
@@ -67,28 +47,28 @@ void loop() {
    char incomingCharacter = Serial.read();
    switch (incomingCharacter) {
      case '4':
-      force_asic5 = false;
-      // Serial.print("4OK");
+      sibosp.setForceASIC5(false);
+      // Serial.print("ID:6");
       break;
 
      case '5':
-      force_asic5 = true;
-      // Serial.print("5OK");
+      sibosp.setForceASIC5(true);
+      // Serial.print("ID:2");
       break;
 
      case 'a':
      case 'A':
-      Serial.write(is_asic4 ? 4 : 5);
+      Serial.write(sibosp.getID() == ID_ASIC4 ? 4 : 5);
       break;
 
      case 'b':
      case 'B':
-      Serial.write(ssdinfo.infobyte);
+      Serial.write(sibosp.getInfoByte());
       break;
  
      case 'd':
      case 'D':
-      dump(ssdinfo.blocks);
+      dump(sibosp.getTotalBlocks());
       break;
 
      case 'i':
@@ -105,12 +85,20 @@ void loop() {
     //   break;
       
      case 'n':
-      curblock++ % (ssdinfo.blocks + 1);
+      curblock++ % (sibosp.getTotalBlocks() + 1);
       break;
 
      case 'N':
       curblock = 0;
-      curdev++ % (ssdinfo.devs + 1);
+      curdev++ % (sibosp.getTotalDevices() + 1);
+      break;
+
+     case 'p':
+      sibosp.setDirectPinMode(false);
+      break;
+
+     case 'P':
+      sibosp.setDirectPinMode(true);
       break;
 
      case 'r':
@@ -127,8 +115,24 @@ void printinfo() {
   long unsigned int blocks;
 
   Serial.println();
+  Serial.print("Pin Numbers (CLK/DATA): ");
+  Serial.print(sibosp.getClockPin());
+  Serial.print("/");
+  Serial.println(sibosp.getDataPin());
+  Serial.print("Pin Bits (CLK/DATA): ");
+  Serial.print(sibosp.getClockBit(), BIN);
+  Serial.print("/");
+  Serial.println(sibosp.getDataBit(), BIN);
+  Serial.print("Direct pin mode: ");
+  if (sibosp.getDirectPinMode()) {
+    Serial.println("On");
+  } else {
+    Serial.println("Off");
+  }
+
+  Serial.println();
   Serial.print("TYPE: ");
-  switch (ssdinfo.type) {
+  switch (sibosp.getType()) {
     case 0:
       Serial.println("RAM");
       break;
@@ -156,10 +160,10 @@ void printinfo() {
   }
   
   Serial.print("DEVICES: ");
-  Serial.println(ssdinfo.devs);
+  Serial.println(sibosp.getTotalDevices());
   
   Serial.print("SIZE: ");
-  switch (ssdinfo.size) {
+  switch (sibosp.getSize()) {
     case 0:
       Serial.println("No SSD Detected");
       return;
@@ -187,246 +191,29 @@ void printinfo() {
   }
 
   Serial.print("BLOCKS: ");
-  Serial.println(ssdinfo.blocks);
+  Serial.println(sibosp.getTotalBlocks());
+  Serial.print("Current block: ");
+  Serial.println(curblock);
 
-  if (is_asic4) {
+  // if (is_asic4) {
+  if (sibosp.getID() == ID_ASIC4) {
     Serial.print("ASIC4 detected.");
-    if (force_asic5) Serial.print(" (ASIC5 mode forced)");
+    // if (force_asic5) Serial.print(" (ASIC5 mode forced)");
+    if (sibosp.getForceASIC5()) Serial.print(" (ASIC5 mode forced)");
     Serial.println();
     Serial.print("Input Register: ");
-    Serial.println(ssdinfo.asic4inputreg);
-    Serial.print("Device Size Register: ");
-    Serial.println(ssdinfo.asic4devsizereg);
+    Serial.println(sibosp.getASIC4InputRegister());
   }
 
-}
-
-void DeselectASIC() {
-  _Control(SP_SSEL);
-}
-
-byte ReadByte(unsigned long address) {
-  SetAddress(address);
-  _Control(SP_SCTL_READ_SINGLE_BYTE | 0b0000);
-  return _DataI();
-}
-
-void ReadBytes(byte* buffer, unsigned long address, int count) {
-  _Control(SP_SCTL_READ_MULTI_BYTE | 0b0000);
-  for (int _cx = 0; _cx < count; _cx++)
-    buffer[_cx] = _DataI();
 }
 
 void Reset() {
   curblock = 0;
   curdev = 0;
-  _Control(0b00000000);
-  is_asic4 = SelectASIC4();
-  if (!is_asic4 || force_asic5) SelectASIC5();
+  sibosp.Reset();
 }
-
-byte GetASIC4InputRegister() {
-  _Control(SP_SCTL_READ_SINGLE_BYTE | 0b0001); // Register 1
-  return _DataI();
-}
-
-byte GetASIC4DevSizeRegister() {
-  _Control(SP_SCTL_WRITE_SINGLE_BYTE | 0b0001); // Register 1
-  return _DataI();
-}
-
-bool SelectASIC4() {
-  _Control(SP_SSEL | ID_ASIC4);
-  _GetSSDInfo();
-
-  if (ssdinfo.infobyte > 0) {
-    ssdinfo.asic4inputreg = GetASIC4InputRegister();
-    ssdinfo.asic4devsizereg = GetASIC4DevSizeRegister();
-    return true;
-  } else {
-    ssdinfo.asic4inputreg = 0;
-    ssdinfo.asic4devsizereg = 0;
-    return false;
-  }
-}
-
-bool SelectASIC5() {
-  ssdinfo.asic4inputreg = 0;
-  ssdinfo.asic4devsizereg = 0;
-
-  _Control(SP_SSEL | ID_ASIC5);
-  _GetSSDInfo();
-
-  return (ssdinfo.infobyte > 0);
-}
-
-void _SetAddress5(unsigned long address) {
-  byte a0 = address & 0xFF;
-  byte a1 = (address >> 8) & 0xFF; 
-  byte a2 = ((address >> 16) & 0b00011111) | ((curdev << 6) & 0b11000000);
-
-  // ports D + C????
-  _Control(SP_SCTL_WRITE_MULTI_BYTE | 0b0011); 
-  _DataO(a1);
-  _DataO(a2);
-  
-  // send port b address
-  _Control(SP_SCTL_WRITE_SINGLE_BYTE | 0b0001);
-  _DataO(a0);
-}
-
-void _SetAddress4(unsigned long address) {
-  byte a0 = address & 0xFF;
-  byte a1 = (address >> 8) & 0xFF;
-  byte a2 = (address >> 16) & 0xFF;
-  byte a3 = ((address >> 24) & 0b00001111) | ((curdev << 4) & 0b00110000); // | 0b01000000);
-
-  _Control(SP_SCTL_WRITE_MULTI_BYTE | 0b0011); 
-  _DataO(a0);
-  _DataO(a1);
-  // if (address >> 8 != 0) _DataO(a1);
-  if (address >> 16 != 0) _DataO(a2);
-  if (address >> 24 != 0) _DataO(a3);
-}
-
-void SetAddress(unsigned long address) {
-  if (is_asic4 && !force_asic5) {
-    _SetAddress4(address);
-  } else {
-    _SetAddress5(address);
-  }
-}
-
-
-// void getstartaddress() {
-//   int i = 0;
-//   unsigned long address;
-
-//   while (i < 4) {
-//     Serial.print("?");
-//     while (Serial.available() > 0) {
-//       char incomingCharacter = Serial.read();
-//       address = (long) incomingCharacter << (i * 8) | address;       
-//       i++;
-//       if (i == 4) {
-//         break;
-//       }
-//     }
-//   }
-//   if (address > ssdinfo.size * 1024) {
-//     Serial.print('z');
-//     address = 0;
-//   } else {
-//     Serial.print('!');
-//     SetAddress(address);
-//   }
-// }
-
 
 void SetMode(byte mode) {
-  // changed from 0b10100010
-  _Control(SP_SCTL_WRITE_SINGLE_BYTE | 0b0010);
-  _DataO(mode & 0x0F);
-}
-
-void _Control(byte data) {
-  _SendCtrlHeader();
-  
-  pinMode(DATA, OUTPUT);
-  for (byte _dx = 0; _dx < 8; _dx++) {
-    digitalWrite(DATA, ((data & (0b00000001 << _dx)) == 0) ? LOW : HIGH);
-    _Cycle(1);
-  }
-  
-  digitalWrite(DATA, LOW);
-  _Cycle(1);
-  
-  pinMode(DATA, INPUT);
-}
-
-void _Cycle(byte cycles) {
-  for (byte _cx = 0; _cx < cycles; _cx++) {
-    digitalWrite(CLOCK, HIGH);
-    digitalWrite(CLOCK, LOW);
-  }
-}
-
-void _SendBitAndLatch(uint8_t state) {
-  digitalWrite(DATA, state);
-  _Cycle(1);
-}
-
-
-// _SendIdleBit()
-// Tristates the pin by setting it to INPUT to comply with Psion standards,
-// then sends a clock pulse
-void _SendIdleBit() {
-  digitalWrite(DATA, LOW); 
-  pinMode(DATA, INPUT);
-  _Cycle(1);
-}
-
-// _SendDataHeader()
-// Send start bit, high Select bit, then the idle bit
-void _SendDataHeader() {
-  pinMode(DATA, OUTPUT);
-  digitalWrite(DATA, HIGH);
-  _Cycle(2);
-  _SendIdleBit();
-}
-
-// _SendCtrlHeader()
-// Send start bit, low Select bit, then the idle bit
-void _SendCtrlHeader() {
-  pinMode(DATA, OUTPUT);
-  digitalWrite(DATA, HIGH);
-  _Cycle(1);
-  digitalWrite(DATA, LOW);
-  _Cycle(1);
-  _SendIdleBit();
-}
-
-byte _DataI() {
-  byte input = 0;
-
-  _SendDataHeader();
-  pinMode(DATA, INPUT);
-  
-  for (byte _dx = 0; _dx < 8; _dx++) {
-    digitalWrite(CLOCK, HIGH);
-    input = input | (digitalRead(DATA) << _dx);
-    digitalWrite(CLOCK, LOW);
-  }
-
-  _SendIdleBit();
-  return input;
-}
-
-void _DataO(byte data) { 
-  _SendDataHeader();
-  pinMode(DATA, OUTPUT);
-  
-  for (byte _dx = 0; _dx < 8; _dx++) {
-    digitalWrite(DATA, ((data & (0b00000001 << _dx)) == 0) ? LOW : HIGH);
-    digitalWrite(CLOCK, HIGH);
-    digitalWrite(CLOCK, LOW);
-  }
-  
-  _SendIdleBit();
-}
-
-
-void _GetSSDInfo() {
-  ssdinfo.infobyte = _DataI();
-
-  ssdinfo.type   = (ssdinfo.infobyte & 0b11100000) >> 5;
-  ssdinfo.devs   = ((ssdinfo.infobyte & 0b00011000) >> 3) + 1;
-  ssdinfo.size   = (ssdinfo.infobyte & 0b00000111);
-  ssdinfo.blocks = (ssdinfo.size == 0) ? 0 : ((0b10000 << ssdinfo.size) * 4);
-}
-
-
-void _Null() {
-  pinMode(DATA, INPUT);
-  _Cycle(12);
+  sibosp.sendControlFrame(SP_SCTL_WRITE_SINGLE_BYTE | 2);
+  sibosp.sendDataFrame(mode & 0x0F);
 }

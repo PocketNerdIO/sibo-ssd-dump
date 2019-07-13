@@ -9,7 +9,7 @@ BOOL fileexists(LPCTSTR szPath) {
     return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
 #else
-bool fileexists(const char *filename){
+bool fileexists(const char *filename) {
     struct stat path_stat;
     return (stat(filename, &path_stat) == 0 && S_ISREG(path_stat.st_mode));
 }
@@ -22,7 +22,7 @@ BOOL direxists(LPCTSTR szPath) {
     return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
 #else
-bool direxists(const char *filename){
+bool direxists(const char *filename) {
     struct stat path_stat;
     return (stat(filename, &path_stat) == 0 && S_ISDIR(path_stat.st_mode));
 }
@@ -35,7 +35,7 @@ BOOL fsitemexists(LPCTSTR szPath) {
     return (dwAttrib != INVALID_FILE_ATTRIBUTES);
 }
 #else
-bool fsitemexists(const char *filename){
+bool fsitemexists(const char *filename) {
     struct stat path_stat;
     return (stat(filename, &path_stat) == 0);
 }
