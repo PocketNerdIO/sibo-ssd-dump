@@ -17,7 +17,7 @@ SSD pins 3 and 4 aren't needed for this.
 
 If you don't want to use the companion app and want to see the raw data coming through, you can use the Arduino sketch by itself with an app like RealTerm on Windows. Connect RealTerm to your Arduino's serial device, set RealTerm to 115200 baud, start the capture (input only) and send "d" to the Arduino. The dump will start immediately.
 
-As with siboimg, this is ALPHA-QUALITY SOFTWARE. The Arduino sketch is reliable, although it struggles with talking to ASIC4-based SSDs in native ASIC4 mode (the default is ASIC5 mode, which is reliable and fine because ASIC4 can talk ASIC5). Both the companion app and the sketch are missing a lot of error checking at the moment, but that will come in the future.
+As with siboimg, this is ALPHA-QUALITY SOFTWARE. Both the companion app and the sketch are missing a lot of error checking at the moment, but that will come in the future.
 
 The Arduino sketch was originally written by Karl with new features such as the command interpreter and block-by-block dumping added by me. The companion app is written by me with the addition of argparse.
 
