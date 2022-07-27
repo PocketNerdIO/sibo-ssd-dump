@@ -57,11 +57,12 @@ void GetSSDInfo(char input) {
 }
 
 void printinfo() {
-    printf("ASIC: %d\n", ssdinfo.asic);
     if (ssdinfo.infobyte == 0) {
         printf("No SSD detected.\n");
         return;
     }
+
+    printf("ASIC: %d\n", ssdinfo.asic);
 
     printf("TYPE: ");
     switch (ssdinfo.type) {
