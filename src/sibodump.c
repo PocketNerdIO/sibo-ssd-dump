@@ -185,7 +185,7 @@ int main (int argc, const char **argv) {
         OPT_STRING('s', "serial", &sd.device, "set serial device of arduino"),
         OPT_STRING('d', "dump", &dumppath, "dump to file"),
         OPT_BOOLEAN('f', "firstblockonly", &firstblockonly, "only pull the first block (256 characters)"),
-        OPT_BOOLEAN('4', "asic4", &allow_asic4, "Allow native ASIC4 mode for compatible SSDs (EXPERIMENTAL)"),
+        OPT_BOOLEAN('4', "asic4", &allow_asic4, "Allow native ASIC4 mode for compatible SSDs"),
         OPT_BOOLEAN('p', "directpinmode", &direct_pin_mode, "Use Arduino pins directly instead of pinMode() et al"),
         // OPT_INTEGER('a', "address", &address, "Start address."),
         OPT_END(),
