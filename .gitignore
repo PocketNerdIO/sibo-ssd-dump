@@ -57,3 +57,5 @@ sibodump
 .vscode/arduino.json
 .vscode/settings.json
 bin/
+*.ssd
+*.fefs
