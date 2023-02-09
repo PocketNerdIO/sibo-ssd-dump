@@ -62,12 +62,12 @@ void printinfo() {
         return;
     }
 
-    printf("ASIC: %d\n", ssdinfo.asic);
+    printf("ASIC%d Detected\n", ssdinfo.asic);
 
     printf("TYPE: ");
     switch (ssdinfo.type) {
         case 0:
-            printf("RAM");
+            printf("RAM or PSRAM");
             break;
         case 1:
             printf("Type 1 Flash");
@@ -76,13 +76,9 @@ void printinfo() {
             printf("Type 2 Flash");
             break;
         case 3:
-            printf("TBS");
-            break;
         case 4:
-            printf("TBS");
-            break;
         case 5:
-            printf("???");
+            printf("Unknown (Info byte %d)", ssdinfo.type);
             break;
         case 6:
             printf("ROM");
@@ -169,7 +165,7 @@ int main (int argc, const char **argv) {
     unsigned char block[256];
     unsigned char curdev;
     int firstblockonly = 0;
-    int allow_asic4 = 0;
+    int force_asic5 = 0;
     int direct_pin_mode = 0;
     FILE *fp;
     int wlen;
@@ -185,7 +181,7 @@ int main (int argc, const char **argv) {
         OPT_STRING('s', "serial", &sd.device, "set serial device of arduino"),
         OPT_STRING('d', "dump", &dumppath, "dump to file"),
         OPT_BOOLEAN('f', "firstblockonly", &firstblockonly, "only pull the first block (256 characters)"),
-        OPT_BOOLEAN('4', "asic4", &allow_asic4, "Allow native ASIC4 mode for compatible SSDs"),
+        OPT_BOOLEAN('5', "asic5", &force_asic5, "Forces the microcontroller to talk to the SSD in ASIC5 mode (ID:2); for testing only"),
         OPT_BOOLEAN('p', "directpinmode", &direct_pin_mode, "Use Arduino pins directly instead of pinMode() et al"),
         // OPT_INTEGER('a', "address", &address, "Start address."),
         OPT_END(),
@@ -234,19 +230,24 @@ int main (int argc, const char **argv) {
 
 
     if (dumppath != NULL) {
-        // Force ASIC4 (ID:6) (if it matters)
-        if (allow_asic4 == 0) {
-            printf("Forcing ASIC5 Pack Mode (ID:2)\n");
+        if (ssdinfo.asic == 4) {
+            // Force ASIC5 (ID:2) (if it matters)
+            if (force_asic5 == 0) {
+                printf("Using ASIC4 Native Mode (ID:6)\n");
+            } else {
+                printf("Forcing ASIC5 Pack Mode (ID:2)\n");
+            }
+            wlen = portsend(&sd, force_asic5 == 0 ? '4' : '5');
         } else {
-            printf("Allowing ASIC4 Native Mode (ID:6)\n");
+            printf("It's ASIC5, so I'm carrying on.\n");
+            wlen = portsend(&sd, '5');
         }
-        wlen = portsend(&sd, allow_asic4 == 0 ? '5' : '4');
         if (wlen != 1) {
             printf("Error from write: %d, %d\n", wlen, errno);
         }
 
         if (direct_pin_mode == 0) {
-            printf("Using pinMode() libraries.\n");
+            printf("Using Arduino GPIO functions.\n");
         } else {
             printf("Using direct pin mode.\n");
         }
